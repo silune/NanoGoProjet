@@ -1,0 +1,6 @@
+*.go
+*.s
+*.png
+*.dot
+_build
+ngoc
