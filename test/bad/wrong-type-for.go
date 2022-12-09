@@ -2,7 +2,7 @@ package main
 import "fmt"
 
 func main() {
-  for i := 0; i < 5; i++ {
-    fmt.Print(i)
+  for 0 {
+    fmt.Print("non")
   }
 }
