@@ -88,7 +88,9 @@ let rec expr env e = match e.expr_desc with
     xorq (reg rdi) (reg rdi)
 
   | TEconstant (Cstring s) ->
-    (* TODO code pour constante string *) assert false
+    (* TODO code pour constante string *)
+    let lab_s = alloc_string s in
+    movq (ilab lab_s) (reg rdi)
 
   | TEbinop (Band, e1, e2) ->
     (* TODO code pour ET logique lazy DONE *)
@@ -158,11 +160,12 @@ let rec expr env e = match e.expr_desc with
     (* TODO code pour * *) assert false
 
   | TEprint el ->
-    (* TODO code pour Print *)
+    (* TODO code pour Print *) (* TEMPO !!!! -> naive version*)
     (match el with
       | [] -> nop
       | t::q when t.expr_typ = Tint -> expr env t ++ call "print_int"
       | t::q when t.expr_typ = Tbool -> expr env t ++ call "print_bool"
+      | t::q when t.expr_typ = Tstring -> expr env t ++ call "print_string"
       | _ -> assert false)
 
   | TEident x ->
@@ -178,8 +181,13 @@ let rec expr env e = match e.expr_desc with
      assert false
 
   | TEblock el ->
-     (* TODO code pour block *)
-      if el = [] then nop else expr env (List.hd el) (*TEMPO !!!!! *)
+     (* TODO code pour block *) (* TEMPO !!!! -> naive version *)
+      (match el with
+      | [] ->
+          nop
+      | t :: q ->
+          (expr env t) ++
+          (expr env {expr_desc = TEblock q; expr_typ = e.expr_typ}))
 
   | TEif (e1, e2, e3) ->
      (* TODO code pour if *) assert false
@@ -232,6 +240,10 @@ let print =
   call "printf" ++
   ret
 
+let print_string =
+  label "print_string" ++
+  print
+
 let print_pointer =
   label "print_pointer" ++
   testq (reg rdi) (reg rdi) ++
@@ -274,6 +286,7 @@ let data_print_bool =
   label "S_false" ++ string "false"
 
 let print_functions = 
+  print_string ++
   print_pointer ++
   print_nil ++
   print_int ++
