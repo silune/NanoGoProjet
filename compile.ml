@@ -227,13 +227,31 @@ let decl code = function
 
 (* ----- print functions ----- *)
 
+let print =
+  xorq (reg rax) (reg rax) ++
+  call "printf" ++
+  ret
+
+let print_pointer =
+  label "print_pointer" ++
+  testq (reg rdi) (reg rdi) ++
+  je "print_nil" ++
+  movq (ind rdi) (reg rdi) ++
+  jmp "print_int"
+
+let print_nil = 
+  label "print_nil" ++
+  movq (ilab "S_nil") (reg rdi) ++
+  print
+
+let data_print_nil =
+  label "S_nil" ++ string "<nil>"
+
 let print_int =
   label "print_int" ++
   movq (reg rdi) (reg rsi) ++
   movq (ilab "S_int") (reg rdi) ++
-  xorq (reg rax) (reg rax) ++
-  call "printf" ++
-  ret
+  print
 
 let data_print_int =
   label "S_int" ++ string "%d" 
@@ -249,19 +267,20 @@ let print_bool =
   label l_false ++
   movq (ilab "S_false") (reg rdi) ++
   label l_end ++
-  xorq (reg rax) (reg rax) ++
-  call "printf" ++
-  ret
+  print
 
 let data_print_bool =
   label "S_true" ++ string "true" ++
   label "S_false" ++ string "false"
 
 let print_functions = 
+  print_pointer ++
+  print_nil ++
   print_int ++
   print_bool
 
-let data_print = 
+let data_print =
+  data_print_nil ++
   data_print_int ++
   data_print_bool
 
