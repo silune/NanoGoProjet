@@ -88,7 +88,7 @@ let rec expr env e = match e.expr_desc with
     xorq (reg rdi) (reg rdi)
 
   | TEconstant (Cstring s) ->
-    (* TODO code pour constante string *)
+    (* TODO code pour constante string DONE *)
     let lab_s = alloc_string s in
     movq (ilab lab_s) (reg rdi)
 
@@ -96,7 +96,7 @@ let rec expr env e = match e.expr_desc with
     (* TODO code pour ET logique lazy DONE *)
     let l_end = new_label () in
     expr env e1 ++ testq (reg rdi) (reg rdi) ++
-    je l_end ++
+    jz l_end ++
     expr env e2 ++
     label l_end
 
@@ -104,7 +104,7 @@ let rec expr env e = match e.expr_desc with
     (* TODO code pour OU logique lazy DONE *) 
     let l_end = new_label () in
     expr env e1 ++ testq (reg rdi) (reg rdi) ++
-    jne l_end ++
+    jnz l_end ++
     expr env e2 ++
     label l_end
 
@@ -151,7 +151,7 @@ let rec expr env e = match e.expr_desc with
     (* TODO code pour negation bool DONE *)
     expr env e1 ++
     testq (reg rdi) (reg rdi) ++
-    compile_bool je
+    compile_bool jz
 
   | TEunop (Uamp, e1) ->
     (* TODO code pour & *) assert false
@@ -171,7 +171,7 @@ let rec expr env e = match e.expr_desc with
       | [] ->
           nop
       | [ex] ->
-          expr env ex ++ print_one ex.expr_typ
+          expr env ex ++ print_one ex.expr_typ ++ call "allocz"
       | ex :: ex_rest ->
           expr env ex ++ print_one ex.expr_typ ++
           call "print_space" ++
@@ -242,6 +242,21 @@ let decl code = function
   | TDfunction (f, e) -> code ++ function_ f e
   | TDstruct _ -> code
 
+(* ----- allocation functions ----- *)
+
+let allocz_fun =
+  label "allocz" ++
+  movq (reg rdi) (reg rbx) ++
+  call "malloc" ++
+  testq (reg rbx) (reg rbx) ++
+  jnz "1f" ++
+  ret ++
+  label "1" ++
+  movb  (imm 0) (ind rax ~index:rbx) ++
+  decq (reg rbx) ++
+  jnz "1b" ++
+  ret
+
 (* ----- print functions ----- *)
 
 let print =
@@ -259,7 +274,14 @@ let data_print_space =
 
 let print_string =
   label "print_string" ++
+  testq (reg rdi) (reg rdi) ++
+  jz "print_nil" ++
+  movq (reg rdi) (reg rsi) ++
+  movq (ilab "S_string") (reg rdi) ++
   print
+
+let data_print_string =
+  label "S_string" ++ string "%s"
 
 let print_pointer =
   label "print_pointer" ++
@@ -290,7 +312,7 @@ let print_bool =
   let l_end = new_label () in
   label "print_bool" ++
   testq (reg rdi) (reg rdi) ++
-  je l_false ++
+  jz l_false ++
   movq (ilab "S_true") (reg rdi) ++
   jmp l_end ++
   label l_false ++
@@ -312,6 +334,7 @@ let print_functions =
 
 let data_print =
   data_print_space ++
+  data_print_string ++
   data_print_nil ++
   data_print_int ++
   data_print_bool
@@ -330,6 +353,7 @@ let file ?debug:(b=false) dl =
       xorq (reg rax) (reg rax) ++
       ret ++
       funs ++
+      allocz_fun ++
       print_functions;
 
    (* TODO print pour d'autres valeurs *)
