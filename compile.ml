@@ -74,29 +74,46 @@ let compile_bool f =
 let rec expr env e = match e.expr_desc with
   | TEskip ->
     nop
+
   | TEconstant (Cbool true) ->
     movq (imm 1) (reg rdi)
+
   | TEconstant (Cbool false) ->
     movq (imm 0) (reg rdi)
+
   | TEconstant (Cint x) ->
     movq (imm64 x) (reg rdi)
+
   | TEnil ->
     xorq (reg rdi) (reg rdi)
+
   | TEconstant (Cstring s) ->
-    (* TODO code pour constante string *) assert false 
+    (* TODO code pour constante string *) assert false
+
   | TEbinop (Band, e1, e2) ->
-    (* TODO code pour ET logique lazy *) assert false 
+    (* TODO code pour ET logique lazy DONE *)
+    let l_end = new_label () in
+    expr env e1 ++ cmpq (imm 0) (reg rdi) ++
+    je l_end ++
+    expr env e2 ++
+    label l_end
+
   | TEbinop (Bor, e1, e2) ->
-    (* TODO code pour OU logique lazy *) assert false 
+    (* TODO code pour OU logique lazy DONE *) 
+    let l_end = new_label () in
+    expr env e1 ++ cmpq (imm 0) (reg rdi) ++
+    jne l_end ++
+    expr env e2 ++
+    label l_end
+
   | TEbinop (Blt | Ble | Bgt | Bge as op, e1, e2) ->
-    (* TODO code pour comparaison ints *)
+    (* TODO code pour comparaison ints DONE *)
     let jump_op = match op with
       | Blt -> jl
       | Ble -> jle
       | Bgt -> jg
       | Bge -> jge
       | _ -> assert false (* n'arrive jamais mais warning sinon *)
-
     in
       expr env e1 ++ pushq (reg rdi) ++
       expr env e2 ++ pushq (reg rdi) ++
@@ -105,7 +122,7 @@ let rec expr env e = match e.expr_desc with
       compile_bool jump_op
 
   | TEbinop (Badd | Bsub | Bmul | Bdiv | Bmod as op, e1, e2) ->
-    (* TODO code pour arithmetique ints - done ? *)
+    (* TODO code pour arithmetique ints - DONE *)
     let code_op = match op with
       | Badd -> addq (reg rsi) (reg rdi)
       | Bsub -> subq (reg rsi) (reg rdi)
@@ -120,15 +137,26 @@ let rec expr env e = match e.expr_desc with
       code_op
 
   | TEbinop (Beq | Bne as op, e1, e2) ->
-    (* TODO code pour egalite toute valeur *) assert false 
+    (* TODO code pour egalite toute valeur *) assert false
+
   | TEunop (Uneg, e1) ->
-    (* TODO code pour negation ints *) assert false 
+    (* TODO code pour negation ints DONE *)
+    expr env e1 ++
+    movq (reg rdi) (reg rsi) ++ movq (imm 0) (reg rdi) ++
+    subq (reg rsi) (reg rdi)
+
   | TEunop (Unot, e1) ->
-    (* TODO code pour negation bool *) assert false 
+    (* TODO code pour negation bool DONE *)
+    expr env e1 ++
+    cmpq (imm 0) (reg rdi) ++
+    compile_bool je
+
   | TEunop (Uamp, e1) ->
-    (* TODO code pour & *) assert false 
+    (* TODO code pour & *) assert false
+
   | TEunop (Ustar, e1) ->
-    (* TODO code pour * *) assert false 
+    (* TODO code pour * *) assert false
+
   | TEprint el ->
     (* TODO code pour Print *)
     (match el with
@@ -138,37 +166,53 @@ let rec expr env e = match e.expr_desc with
       | _ -> assert false)
 
   | TEident x ->
-    (* TODO code pour x *) assert false 
+    (* TODO code pour x *) assert false
+
   | TEassign ([{expr_desc=TEident x}], [e1]) ->
-    (* TODO code pour x := e *) assert false 
+    (* TODO code pour x := e *) assert false
+
   | TEassign ([lv], [e1]) ->
-    (* TODO code pour x1,... := e1,... *) assert false 
+    (* TODO code pour x1,... := e1,... *) assert false
+
   | TEassign (_, _) ->
      assert false
+
   | TEblock el ->
      (* TODO code pour block *)
       if el = [] then nop else expr env (List.hd el) (*TEMPO !!!!! *)
 
   | TEif (e1, e2, e3) ->
      (* TODO code pour if *) assert false
+
   | TEfor (e1, e2) ->
      (* TODO code pour for *) assert false
+
   | TEnew ty ->
      (* TODO code pour new S *) assert false
+
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
+
   | TEdot (e1, {f_ofs=ofs}) ->
      (* TODO code pour e.f *) assert false
+
   | TEvars _ ->
      assert false (* fait dans block *)
+
   | TEreturn [] ->
     (* TODO code pour return e *) assert false
+
   | TEreturn [e1] ->
     (* TODO code pour return e1,... *) assert false
+
   | TEreturn _ ->
      assert false
+
   | TEincdec (e1, op) ->
-    (* TODO code pour return e++, e-- *) assert false
+    (* TODO code pour return e++, e-- DONE *)
+    match op with
+    | Inc -> incq (reg rdi)
+    | Dec -> decq (reg rdi)
 
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
@@ -195,15 +239,16 @@ let data_print_int =
   label "S_int" ++ string "%d" 
 
 let print_bool =
-  let pfalse = new_label () in
+  let l_false = new_label () in
+  let l_end = new_label () in
   label "print_bool" ++
   cmpq (imm 0) (reg rdi) ++
-  je pfalse ++
+  je l_false ++
   movq (ilab "S_true") (reg rdi) ++
-  jmp "end_print_bool" ++
-  label pfalse ++
+  jmp l_end ++
+  label l_false ++
   movq (ilab "S_false") (reg rdi) ++
-  label "end_print_bool" ++
+  label l_end ++
   xorq (reg rax) (reg rax) ++
   call "printf" ++
   ret
