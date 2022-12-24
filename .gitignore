@@ -1,5 +1,5 @@
 *.go
-!/test/*/*.go
+!/tst/*/*.go
 *.s
 *.png
 *.dot
