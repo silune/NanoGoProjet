@@ -93,7 +93,7 @@ let rec expr env e = match e.expr_desc with
   | TEbinop (Band, e1, e2) ->
     (* TODO code pour ET logique lazy DONE *)
     let l_end = new_label () in
-    expr env e1 ++ cmpq (imm 0) (reg rdi) ++
+    expr env e1 ++ testq (reg rdi) (reg rdi) ++
     je l_end ++
     expr env e2 ++
     label l_end
@@ -101,7 +101,7 @@ let rec expr env e = match e.expr_desc with
   | TEbinop (Bor, e1, e2) ->
     (* TODO code pour OU logique lazy DONE *) 
     let l_end = new_label () in
-    expr env e1 ++ cmpq (imm 0) (reg rdi) ++
+    expr env e1 ++ testq (reg rdi) (reg rdi) ++
     jne l_end ++
     expr env e2 ++
     label l_end
@@ -148,7 +148,7 @@ let rec expr env e = match e.expr_desc with
   | TEunop (Unot, e1) ->
     (* TODO code pour negation bool DONE *)
     expr env e1 ++
-    cmpq (imm 0) (reg rdi) ++
+    testq (reg rdi) (reg rdi) ++
     compile_bool je
 
   | TEunop (Uamp, e1) ->
@@ -242,7 +242,7 @@ let print_bool =
   let l_false = new_label () in
   let l_end = new_label () in
   label "print_bool" ++
-  cmpq (imm 0) (reg rdi) ++
+  testq (reg rdi) (reg rdi) ++
   je l_false ++
   movq (ilab "S_true") (reg rdi) ++
   jmp l_end ++
