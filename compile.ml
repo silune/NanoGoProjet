@@ -160,13 +160,22 @@ let rec expr env e = match e.expr_desc with
     (* TODO code pour * *) assert false
 
   | TEprint el ->
-    (* TODO code pour Print *) (* TEMPO !!!! -> naive version*)
+    (* TODO code pour Print *) (* TEMPO !!!! -> less but still naive version*)
+    let print_one = function
+      | Tint -> call "print_int"
+      | Tbool -> call "print_bool"
+      | Tstring -> call "print_string"
+      | Tptr _ -> call "print_pointer" 
+      | _ -> assert false in
     (match el with
-      | [] -> nop
-      | t::q when t.expr_typ = Tint -> expr env t ++ call "print_int"
-      | t::q when t.expr_typ = Tbool -> expr env t ++ call "print_bool"
-      | t::q when t.expr_typ = Tstring -> expr env t ++ call "print_string"
-      | _ -> assert false)
+      | [] ->
+          nop
+      | [ex] ->
+          expr env ex ++ print_one ex.expr_typ
+      | ex :: ex_rest ->
+          expr env ex ++ print_one ex.expr_typ ++
+          call "print_space" ++
+          expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
 
   | TEident x ->
     (* TODO code pour x *) assert false
@@ -240,6 +249,14 @@ let print =
   call "printf" ++
   ret
 
+let print_space =
+  label "print_space" ++
+  movq (ilab "S_space") (reg rdi) ++
+  print
+
+let data_print_space =
+  label "S_space" ++ string " "
+
 let print_string =
   label "print_string" ++
   print
@@ -286,6 +303,7 @@ let data_print_bool =
   label "S_false" ++ string "false"
 
 let print_functions = 
+  print_space ++
   print_string ++
   print_pointer ++
   print_nil ++
@@ -293,6 +311,7 @@ let print_functions =
   print_bool
 
 let data_print =
+  data_print_space ++
   data_print_nil ++
   data_print_int ++
   data_print_bool
