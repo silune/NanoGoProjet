@@ -110,7 +110,7 @@ let rec expr env e = match e.expr_desc with
 
   | TEbinop (Blt | Ble | Bgt | Bge as op, e1, e2) ->
     (* TODO code pour comparaison ints DONE *)
-    let jump_op = match op with
+    let comp_jmp = match op with
       | Blt -> jl
       | Ble -> jle
       | Bgt -> jg
@@ -121,7 +121,7 @@ let rec expr env e = match e.expr_desc with
       expr env e2 ++ pushq (reg rdi) ++
       popq rsi ++ popq rdi ++
       cmpq (reg rsi) (reg rdi) ++
-      compile_bool jump_op
+      compile_bool comp_jmp
 
   | TEbinop (Badd | Bsub | Bmul | Bdiv | Bmod as op, e1, e2) ->
     (* TODO code pour arithmetique ints - DONE *)
@@ -139,7 +139,18 @@ let rec expr env e = match e.expr_desc with
       code_op
 
   | TEbinop (Beq | Bne as op, e1, e2) ->
-    (* TODO code pour egalite toute valeur *) assert false
+    (* TODO code pour egalite toute valeur *)
+    let eq_jmp = match op with
+      | Beq -> je
+      | Bne -> jne
+      | _ -> assert false (* arrive jamais mais warning sinon *)
+    in
+    expr env e1 ++ pushq (reg rdi) ++
+    expr env e2 ++ pushq (reg rdi) ++
+    popq rsi ++ popq rdi ++
+    (match e1.expr_typ with
+      | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi) ++ compile_bool eq_jmp
+      | _ -> assert false (* TODO egualité autre types *))
 
   | TEunop (Uneg, e1) ->
     (* TODO code pour negation ints DONE *)
