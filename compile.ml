@@ -150,6 +150,7 @@ let rec expr env e = match e.expr_desc with
     popq rsi ++ popq rdi ++
     (match e1.expr_typ with
       | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi) ++ compile_bool eq_jmp
+      | Tstring -> call "strcmp@PLT" ++ cmpl (imm 0) (reg eax) ++ compile_bool eq_jmp
       | _ -> assert false (* TODO egualité autre types *))
 
   | TEunop (Uneg, e1) ->
