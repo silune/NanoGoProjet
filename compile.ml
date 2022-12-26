@@ -190,12 +190,15 @@ let rec expr env e = match e.expr_desc with
           expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
 
   | TEident x ->
-    (* TODO code pour x *)
+    (* TODO code pour x DONE *)
     movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
     movq (ind rdi) (reg rdi)
 
   | TEassign ([{expr_desc=TEident x}], [e1]) ->
-    (* TODO code pour x := e *) assert false
+    (* TODO code pour x := e *)
+    expr env e1 ++
+    movq (ind rbp ~ofs:x.v_addr) (reg rax) ++
+    movq (reg rdi) (ind rax)
 
   | TEassign ([lv], [e1]) ->
     (* TODO code pour x1,... := e1,... *) assert false
