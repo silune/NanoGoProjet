@@ -28,7 +28,6 @@ let print_pointer =
   label "print_pointer" ++
   testq (reg rdi) (reg rdi) ++
   je "print_nil" ++
-  movq (ind rdi) (reg rdi) ++
   jmp "print_int"
 
 let print_nil = 

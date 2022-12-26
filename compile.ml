@@ -166,10 +166,13 @@ let rec expr env e = match e.expr_desc with
     compile_bool jz
 
   | TEunop (Uamp, e1) ->
-    (* TODO code pour & *) assert false
+    (* TODO code pour & DONE *)
+    l_val_addr env e1
 
   | TEunop (Ustar, e1) ->
-    (* TODO code pour * *) assert false
+    (* TODO code pour * DONE *)
+    l_val_addr env e ++
+    movq (ind rdi) (reg rdi)
 
   | TEprint el ->
     (* TODO code pour Print *) (* TEMPO !!!! -> less but still naive version*)
@@ -266,6 +269,16 @@ let rec expr env e = match e.expr_desc with
     match op with
     | Inc -> incq (reg rdi)
     | Dec -> decq (reg rdi)
+
+and l_val_addr env e = match e.expr_desc with
+  | TEident x ->
+      movq (ind rbp ~ofs:x.v_addr) (reg rdi)
+  | TEdot _ ->
+      assert false (*TODO*)
+  | TEunop (Ustar, e1) ->
+      l_val_addr env e1 ++
+      movq (ind rdi) (reg rdi)
+  | _ -> assert false (* impossible si bien typé *)
 
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;

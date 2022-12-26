@@ -438,7 +438,7 @@ and l_val_desc env loc = function
      if exprE.expr_desc = TEnil then
        error loc "*nil is not defined"
      else (match exprE.expr_typ with
-            | Tptr typ -> exprE.expr_desc, typ, rtE
+            | Tptr typ -> TEunop (Ustar, exprE), typ, rtE
             | typ -> error loc ("expression of type " ^ (string_of_type typ) ^ " but expected of type " ^ (string_of_type typ)))
   | _ -> error loc "lvalue required here"
 
