@@ -151,7 +151,7 @@ let rec expr env e = match e.expr_desc with
     (match e1.expr_typ with
       | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi) ++ compile_bool eq_jmp
       | Tstring -> call "strcmp@PLT" ++ cmpl (imm 0) (reg eax) ++ compile_bool eq_jmp
-      | _ -> assert false (* TODO egualité autre types *))
+      | _ -> assert false (* TODO egualité autres types *))
 
   | TEunop (Uneg, e1) ->
     (* TODO code pour negation ints DONE *)
@@ -190,7 +190,8 @@ let rec expr env e = match e.expr_desc with
           expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
 
   | TEident x ->
-    (* TODO code pour x *) assert false
+    (* TODO code pour x *)
+    movq (ind rbp ~ofs:x.v_addr) (reg rdi)
 
   | TEassign ([{expr_desc=TEident x}], [e1]) ->
     (* TODO code pour x := e *) assert false
@@ -203,12 +204,7 @@ let rec expr env e = match e.expr_desc with
 
   | TEblock el ->
      (* TODO code pour block *) (* TEMPO !!!! -> naive version *)
-      (match el with
-      | [] ->
-          nop
-      | t :: q ->
-          (expr env t) ++
-          (expr env {expr_desc = TEblock q; expr_typ = e.expr_typ}))
+      List.fold_left (fun res e -> res ++ expr env e) nop el
 
   | TEif (e1, e2, e3) ->
      (* TODO code pour if *) assert false
@@ -225,8 +221,31 @@ let rec expr env e = match e.expr_desc with
   | TEdot (e1, {f_ofs=ofs}) ->
      (* TODO code pour e.f *) assert false
 
-  | TEvars _ ->
-     assert false (* fait dans block *)
+  | TEvars (vl, el) ->
+     (* TODO créations de variables puis assignations *)
+      let add_var code v =
+        env.nb_locals := !(env.nb_locals) + 1;
+        v.v_addr <- -8 * !(env.nb_locals);
+        code ++
+        movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
+        movq (reg rax) (ind rbp ~ofs:v.v_addr)
+      in
+      let assign_var code v =
+        code ++
+        popq rdi ++
+        movq (reg rdi) (ind rbp ~ofs:v.v_addr)
+      in
+      let vars = List.fold_left add_var nop vl in
+      let vars_expr =
+      (match el with
+        | [] ->
+            nop
+        | [{expr_desc = TEcall _}] ->
+            assert false (* TODO *)
+        | _ ->
+            List.fold_left (fun res e -> res ++ expr env e ++ pushq (reg rdi)) nop el ++
+            List.fold_left assign_var nop vl) in
+      vars ++ vars_expr
 
   | TEreturn [] ->
     (* TODO code pour return e *) assert false
@@ -246,8 +265,17 @@ let rec expr env e = match e.expr_desc with
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
   (* TODO code pour fonction *)
-  let s = f.fn_name in label ("F_" ^ s) ++
-  (expr empty_env e) ++ ret (*TEMPO !!!!! *)
+  let s = f.fn_name in
+  let env_fun = empty_env in
+  let expr_fun = expr env_fun e in
+  label ("F_" ^ s) ++
+  pushq (reg rbp) ++
+  movq (reg rsp) (reg rbp) ++
+  subq (imm (!(env_fun.nb_locals) * 8)) (reg rsp) ++
+  expr_fun ++
+  movq (reg rbp) (reg rsp) ++ 
+  popq rbp ++
+  ret (*TEMPO !!!!! *)
   
 
 let decl code = function
