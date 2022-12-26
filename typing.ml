@@ -439,7 +439,7 @@ and l_val_desc env loc = function
        error loc "*nil is not defined"
      else (match exprE.expr_typ with
             | Tptr typ -> TEunop (Ustar, exprE), typ, rtE
-            | typ -> error loc ("expression of type " ^ (string_of_type typ) ^ " but expected of type " ^ (string_of_type typ)))
+            | typ -> error loc "should be a pointer type")
   | _ -> error loc "lvalue required here"
 
 (* Renvoie une liste d'expression et une liste de types à partir d'une liste de pexpressions *)
