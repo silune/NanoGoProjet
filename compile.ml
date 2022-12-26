@@ -199,10 +199,10 @@ let rec expr env e = match e.expr_desc with
 
   | TEassign (lvl, el) ->
       let assign_lv code lv =
-        code ++
         l_val_addr env lv ++
         popq r12 ++
-        movq (reg r12) (ind rdi)
+        movq (reg r12) (ind rdi) ++
+        code
       in
       let eval_vars = proper_eval_list env el in
       let assign_all_lv = List.fold_left assign_lv nop lvl in
@@ -249,10 +249,10 @@ let rec expr env e = match e.expr_desc with
         movq (reg rax) (ind rbp ~ofs:v.v_addr)
       in
       let assign_var code v =
-        code ++
         movq (ind rbp ~ofs:v.v_addr) (reg rax) ++
         popq rdi ++
-        movq (reg rdi) (ind rax)
+        movq (reg rdi) (ind rax) ++
+        code
       in
       let add_all_vars = List.fold_left add_var nop vl in
       let eval_exprs = proper_eval_list env el in
