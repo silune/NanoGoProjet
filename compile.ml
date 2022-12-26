@@ -258,8 +258,10 @@ let rec expr env e = match e.expr_desc with
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
 
-  | TEdot (e1, {f_ofs=ofs}) ->
-     (* TODO code pour e.f *) assert false
+  | TEdot _ ->
+     (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
+      l_val_addr env e ++
+      movq (ind rdi) (reg rdi)
 
   | TEvars (vl, el) ->
      (* TODO créations de variables puis assignations *)
@@ -278,7 +280,7 @@ let rec expr env e = match e.expr_desc with
       in
       let add_all_vars = List.fold_left add_var nop vl in
       let eval_exprs = proper_eval_list env el in
-      let assign_all_vars = List.fold_left assign_var nop vl in
+      let assign_all_vars = if el = [] then nop else List.fold_left assign_var nop vl in
       add_all_vars ++ eval_exprs ++ assign_all_vars
 
   | TEreturn [] ->
@@ -303,8 +305,13 @@ let rec expr env e = match e.expr_desc with
 and l_val_addr env e = match e.expr_desc with
   | TEident x ->
       movq (ind rbp ~ofs:x.v_addr) (reg rdi)
-  | TEdot _ ->
-      assert false (*TODO*)
+  | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
+      l_val_addr env e1 ++
+      movq (ind rdi) (reg rdi) ++
+      addq (imm f1.f_ofs) (reg rdi)
+  | TEdot (e1, f1) ->
+      l_val_addr env e1 ++
+      addq (imm f1.f_ofs) (reg rdi)
   | TEunop (Ustar, e1) ->
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi)
