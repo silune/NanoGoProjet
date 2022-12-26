@@ -191,7 +191,8 @@ let rec expr env e = match e.expr_desc with
 
   | TEident x ->
     (* TODO code pour x *)
-    movq (ind rbp ~ofs:x.v_addr) (reg rdi)
+    movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
+    movq (ind rdi) (reg rdi)
 
   | TEassign ([{expr_desc=TEident x}], [e1]) ->
     (* TODO code pour x := e *) assert false
@@ -232,8 +233,9 @@ let rec expr env e = match e.expr_desc with
       in
       let assign_var code v =
         code ++
+        movq (ind rbp ~ofs:v.v_addr) (reg rax) ++
         popq rdi ++
-        movq (reg rdi) (ind rbp ~ofs:v.v_addr)
+        movq (reg rdi) (ind rax)
       in
       let vars = List.fold_left add_var nop vl in
       let vars_expr =
