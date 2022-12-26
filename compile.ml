@@ -250,7 +250,7 @@ let rec expr env e = match e.expr_desc with
       label loop_end_lab
 
   | TEnew ty ->
-     (* TODO code pour new S *)
+     (* TODO code pour new S DONE *)
       movq (imm (sizeof ty)) (reg rdi) ++
       call "allocz" ++
       movq (reg rax) (reg rdi)
@@ -353,11 +353,25 @@ let allocz_fun =
   jnz "1b" ++
   ret
 
-(* ----------- *)
+(* ----- offset computing ----- *)
+
+let set_offset_fields fields =
+  let ofs = ref 0 in
+  let set_offset f =
+    f.f_ofs <- !ofs;
+    ofs := !ofs + sizeof(f.f_typ) in
+  Hashtbl.iter (fun key f -> set_offset f) fields
+
+let set_offset_structs = function
+  | TDstruct s -> set_offset_fields s.s_fields
+  | TDfunction _ -> ()
+
+(* ---------- *)
 
 let file ?debug:(b=false) dl =
   debug := b;
   (* TODO calcul offset champs *)
+  List.iter set_offset_structs dl;
   (* TODO code fonctions *) let funs = List.fold_left decl nop dl in
   { text =
       globl "main" ++ label "main" ++
