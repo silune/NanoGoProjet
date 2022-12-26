@@ -225,7 +225,17 @@ let rec expr env e = match e.expr_desc with
       List.fold_left (fun res e -> res ++ expr env e) nop el
 
   | TEif (e1, e2, e3) ->
-     (* TODO code pour if *) assert false
+     (* TODO code pour if DONE *)
+      let end_if_lab = new_label () in
+      let else_lab = new_label () in
+      expr env e1 ++
+      testq (reg rdi) (reg rdi) ++
+      jz else_lab ++
+      expr env e2 ++
+      jmp end_if_lab ++
+      label else_lab ++
+      expr env e3 ++
+      label end_if_lab
 
   | TEfor (e1, e2) ->
      (* TODO code pour for *) assert false
