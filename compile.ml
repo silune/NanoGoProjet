@@ -238,7 +238,16 @@ let rec expr env e = match e.expr_desc with
       label end_if_lab
 
   | TEfor (e1, e2) ->
-     (* TODO code pour for *) assert false
+     (* TODO code pour for DONE *)
+      let loop_lab = new_label () in
+      let loop_end_lab = new_label () in
+      label loop_lab ++
+      expr env e1 ++
+      testq (reg rdi) (reg rdi) ++
+      jz loop_end_lab ++
+      expr env e2 ++
+      jmp loop_lab ++
+      label loop_end_lab
 
   | TEnew ty ->
      (* TODO code pour new S *) assert false
@@ -280,9 +289,13 @@ let rec expr env e = match e.expr_desc with
 
   | TEincdec (e1, op) ->
     (* TODO code pour return e++, e-- DONE *)
-    match op with
-    | Inc -> incq (reg rdi)
-    | Dec -> decq (reg rdi)
+    let action = match op with
+      | Inc -> incq (reg r12)
+      | Dec -> decq (reg r12) in
+    l_val_addr env e1 ++
+    movq (ind rdi) (reg r12) ++
+    action ++
+    movq (reg r12) (ind rdi)
 
 and l_val_addr env e = match e.expr_desc with
   | TEident x ->
