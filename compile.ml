@@ -197,18 +197,29 @@ let rec expr env e = match e.expr_desc with
     movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
     movq (ind rdi) (reg rdi)
 
+  | TEassign (lvl, el) ->
+      let assign_lv code lv =
+        code ++
+        l_val_addr env lv ++
+        popq r12 ++
+        movq (reg r12) (ind rdi)
+      in
+      let eval_vars = proper_eval_list env el in
+      let assign_all_lv = List.fold_left assign_lv nop lvl in
+      eval_vars ++ assign_all_lv
+(*
   | TEassign ([{expr_desc=TEident x}], [e1]) ->
-    (* TODO code pour x := e *)
+    (* TODO code pour x = e *)
     expr env e1 ++
     movq (ind rbp ~ofs:x.v_addr) (reg rax) ++
     movq (reg rdi) (ind rax)
 
   | TEassign ([lv], [e1]) ->
-    (* TODO code pour x1,... := e1,... *) assert false
+    (* TODO code pour x1,... = e1,... *) assert false
 
   | TEassign (_, _) ->
      assert false
-
+*)
   | TEblock el ->
      (* TODO code pour block *) (* TEMPO !!!! -> naive version *)
       List.fold_left (fun res e -> res ++ expr env e) nop el
@@ -243,17 +254,10 @@ let rec expr env e = match e.expr_desc with
         popq rdi ++
         movq (reg rdi) (ind rax)
       in
-      let vars = List.fold_left add_var nop vl in
-      let vars_expr =
-      (match el with
-        | [] ->
-            nop
-        | [{expr_desc = TEcall _}] ->
-            assert false (* TODO *)
-        | _ ->
-            List.fold_left (fun res e -> res ++ expr env e ++ pushq (reg rdi)) nop el ++
-            List.fold_left assign_var nop vl) in
-      vars ++ vars_expr
+      let add_all_vars = List.fold_left add_var nop vl in
+      let eval_exprs = proper_eval_list env el in
+      let assign_all_vars = List.fold_left assign_var nop vl in
+      add_all_vars ++ eval_exprs ++ assign_all_vars
 
   | TEreturn [] ->
     (* TODO code pour return e *) assert false
@@ -279,6 +283,14 @@ and l_val_addr env e = match e.expr_desc with
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi)
   | _ -> assert false (* impossible si bien typé *)
+
+and proper_eval_list env e_lst = match e_lst with
+  | [] ->
+      nop
+  | [{expr_desc = TEcall _ }] ->
+      assert false (* TODO *)
+  | _ ->
+      List.fold_left (fun code e -> code ++ expr env e ++ pushq (reg rdi)) nop e_lst
 
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
