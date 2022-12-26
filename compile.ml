@@ -250,7 +250,10 @@ let rec expr env e = match e.expr_desc with
       label loop_end_lab
 
   | TEnew ty ->
-     (* TODO code pour new S *) assert false
+     (* TODO code pour new S *)
+      movq (imm (sizeof ty)) (reg rdi) ++
+      call "allocz" ++
+      movq (reg rax) (reg rdi)
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
