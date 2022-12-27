@@ -71,6 +71,14 @@ let compile_bool f =
   movq (imm 0) (reg rdi) ++ jmp l_end ++
   label l_true ++ movq (imm 1) (reg rdi) ++ label l_end
 
+(* general case of assignation, assuming val is on the stack and direction is in rdi *)
+let rec assign_lv_general = function
+  | Tstruct s ->
+      assert false (*TODO*)
+  | _ ->
+      popq r12 ++
+      movq (reg r12) (ind rdi)
+
 let rec expr env e = match e.expr_desc with
   | TEskip ->
     nop
@@ -175,33 +183,29 @@ let rec expr env e = match e.expr_desc with
     movq (ind rdi) (reg rdi)
 
   | TEprint el ->
-    (* TODO code pour Print *) (* TEMPO !!!! -> less but still naive version*)
-    let print_one = function
-      | Tint -> call "print_int"
-      | Tbool -> call "print_bool"
-      | Tstring -> call "print_string"
-      | Tptr _ -> call "print_pointer" 
-      | _ -> assert false in
+    (* TODO code pour Print DONE *) (* my own version (do go version ?) *)
     (match el with
       | [] ->
           nop
       | [ex] ->
-          expr env ex ++ print_one ex.expr_typ
+          expr env ex ++ FmtPrint.print_one ex.expr_typ
       | ex :: ex_rest ->
-          expr env ex ++ print_one ex.expr_typ ++
+          expr env ex ++ FmtPrint.print_one ex.expr_typ ++
           call "print_space" ++
           expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
+  
+  | TEident ({ v_typ = Tstruct _ } as x) ->
+      movq (ind rbp ~ofs:x.v_addr) (reg rdi)
 
   | TEident x ->
     (* TODO code pour x DONE *)
-    movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
-    movq (ind rdi) (reg rdi)
+      movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
+      movq (ind rdi) (reg rdi)
 
   | TEassign (lvl, el) ->
       let assign_lv code lv =
         l_val_addr env lv ++
-        popq r12 ++
-        movq (reg r12) (ind rdi) ++
+        assign_lv_general lv.expr_typ ++
         code
       in
       let eval_vars = proper_eval_list env el in
@@ -273,9 +277,8 @@ let rec expr env e = match e.expr_desc with
         movq (reg rax) (ind rbp ~ofs:v.v_addr)
       in
       let assign_var code v =
-        movq (ind rbp ~ofs:v.v_addr) (reg rax) ++
-        popq rdi ++
-        movq (reg rdi) (ind rax) ++
+        movq (ind rbp ~ofs:v.v_addr) (reg rdi) ++
+        assign_lv_general v.v_typ ++
         code
       in
       let add_all_vars = List.fold_left add_var nop vl in

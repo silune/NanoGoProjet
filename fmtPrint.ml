@@ -1,4 +1,38 @@
 open X86_64
+open Tast
+
+let sizeof = Typing.sizeof
+
+(* ----- functions ----- *)
+
+let fields_to_lst f_hashtbl =
+  Hashtbl.fold (fun key f lst -> f :: lst) f_hashtbl []
+
+let rec print_one = function
+  | Tbool -> call "print_bool"
+  | Tint -> call "print_int"
+  | Tstring -> call "print_string"
+  | Tptr _ -> call "print_pointer"
+  | Tstruct s -> print_struct s
+  | _ -> assert false (* impossible si bien typé *)
+
+and print_field f =
+  movq (ind rbx) (reg rdi) ++
+  print_one f.f_typ ++
+  addq (imm (sizeof f.f_typ)) (reg rbx)
+
+and print_field_lst fl = match fl with
+  | [] -> nop
+  | [f] -> print_field f
+  | f :: f_rest -> print_field f ++ call "print_space" ++ print_field_lst f_rest
+
+and print_struct s =
+  movq (reg rdi) (reg rbx) ++
+  call "print_lbra" ++
+  print_field_lst (fields_to_lst s.s_fields) ++
+  call "print_rbra"
+
+(* ----- constants ----- *)
 
 let print =
   xorq (reg rax) (reg rax) ++
@@ -12,6 +46,22 @@ let print_space =
 
 let data_print_space =
   label "S_space" ++ string " "
+
+let print_lbra =
+  label "print_lbra" ++
+  movq (ilab "S_lbra") (reg rdi) ++
+  print
+
+let data_print_lbra =
+  label "S_lbra" ++ string "{"
+
+let print_rbra =
+  label "print_rbra" ++
+  movq (ilab "S_rbra") (reg rdi) ++
+  print
+
+let data_print_rbra =
+  label "S_rbra" ++ string "}"
 
 let print_string =
   label "print_string" ++
@@ -64,6 +114,8 @@ let data_print_bool =
 
 let print_functions = 
   print_space ++
+  print_lbra ++
+  print_rbra ++
   print_string ++
   print_pointer ++
   print_nil ++
@@ -72,6 +124,8 @@ let print_functions =
 
 let print_data =
   data_print_space ++
+  data_print_lbra ++
+  data_print_rbra ++
   data_print_string ++
   data_print_nil ++
   data_print_int ++
