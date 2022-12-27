@@ -13,21 +13,31 @@ let rec print_one = function
   | Tint -> call "print_int"
   | Tstring -> call "print_string"
   | Tptr _ -> call "print_pointer"
-  | Tstruct s -> print_struct s
+  | Tstruct s -> movq (reg rdi) (reg rbx) ++ print_struct s
+  | _ -> assert false (* impossible si bien typé *)
+
+and print_inside typ = match typ with
+  | Tstruct s ->
+      pushq (reg rbx) ++
+      movq (reg rax) (reg rbx) ++
+      print_struct s ++
+      popq rbx
+  | Tbool | Tint | Tstring | Tptr _ ->
+      movq (ind rax) (reg rdi) ++
+      print_one typ
   | _ -> assert false (* impossible si bien typé *)
 
 and print_field f =
-  movq (ind rbx) (reg rdi) ++
-  print_one f.f_typ ++
-  addq (imm (sizeof f.f_typ)) (reg rbx)
+  movq (reg rbx) (reg rax) ++
+  addq (imm f.f_ofs) (reg rax) ++
+  print_inside f.f_typ
 
 and print_field_lst fl = match fl with
   | [] -> nop
   | [f] -> print_field f
-  | f :: f_rest -> print_field f ++ call "print_space" ++ print_field_lst f_rest
+  | f :: f_rest -> print_field_lst f_rest ++ call "print_space" ++ print_field f
 
 and print_struct s =
-  movq (reg rdi) (reg rbx) ++
   call "print_lbra" ++
   print_field_lst (fields_to_lst s.s_fields) ++
   call "print_rbra"

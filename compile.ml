@@ -74,10 +74,26 @@ let compile_bool f =
 (* general case of assignation, assuming val is on the stack and direction is in rdi *)
 let rec assign_lv_general = function
   | Tstruct s ->
-      assert false (*TODO*)
+      popq r12 ++
+      Hashtbl.fold (fun key f code -> code ++ assign_field f) s.s_fields nop
   | _ ->
       popq r12 ++
       movq (reg r12) (ind rdi)
+
+and assign_field f =
+  movq (reg r12) (reg rbx) ++
+  addq (imm f.f_ofs) (reg rbx) ++
+  (match f.f_typ with
+    | Tstruct s ->
+        pushq (reg r12) ++
+        pushq (reg rbx) ++
+        assign_lv_general f.f_typ ++
+        popq r12
+    | _ ->
+        movq (ind rbx) (reg rax) ++
+        movq (reg rax) (ind rdi)) ++
+        addq (imm (sizeof f.f_typ)) (reg rdi)
+
 
 let rec expr env e = match e.expr_desc with
   | TEskip ->
@@ -261,7 +277,10 @@ let rec expr env e = match e.expr_desc with
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
-
+  
+  | TEdot (_, { f_typ = Tstruct _ }) ->
+      l_val_addr env e
+  
   | TEdot _ ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
       l_val_addr env e ++
