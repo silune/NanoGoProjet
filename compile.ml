@@ -61,7 +61,10 @@ type env = {
 }
 
 let empty_env =
-  { exit_label = ""; ofs_this = -1; nb_locals = ref 0; next_local = 0 }
+  { exit_label = "" ; ofs_this = -1 ; nb_locals = ref 0 ; next_local = 0 }
+
+let new_env exit ofs =
+  { exit_label = exit ; ofs_this = ofs ; nb_locals = ref 0 ; next_local = 0 }
 
 let mk_bool d = { expr_desc = d; expr_typ = Tbool }
 let mk_ident v = { expr_desc = TEident v; expr_typ = v.v_typ }
@@ -268,7 +271,10 @@ let rec expr env e = match e.expr_desc with
             movq (reg rax) (reg rdi))
 
   | TEcall (f, el) ->
-     (* TODO code pour appel fonction *) assert false
+     (* TODO code pour appel fonction *)
+      (match el with
+        | [] -> call ("F_" ^ f.fn_name)
+        | _ -> assert false) (* TODO *)
   
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
@@ -300,14 +306,11 @@ let rec expr env e = match e.expr_desc with
       let assign_all_vars = if el = [] then nop else List.fold_left assign_var nop vl in
       add_all_vars ++ eval_exprs ++ assign_all_vars
 
-  | TEreturn [] ->
-    (* TODO code pour return e *) assert false
-
-  | TEreturn [e1] ->
-    (* TODO code pour return e1,... *) assert false
-
-  | TEreturn _ ->
-     assert false
+  | TEreturn el ->
+    (* TODO code pour return *)
+    (match el with
+      | [] -> jmp env.exit_label
+      | _ -> assert false) (* TODO *)
 
   | TEincdec (e1, op) ->
     (* TODO code pour return e++, e-- DONE *)
@@ -351,13 +354,14 @@ let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
   (* TODO code pour fonction *)
   let s = f.fn_name in
-  let env_fun = empty_env in
+  let env_fun = new_env ("E_" ^ s) 0 in
   let expr_fun = expr env_fun e in
   label ("F_" ^ s) ++
   pushq (reg rbp) ++
   movq (reg rsp) (reg rbp) ++
   subq (imm (!(env_fun.nb_locals) * 8)) (reg rsp) ++
   expr_fun ++
+  label env_fun.exit_label ++
   movq (reg rbp) (reg rsp) ++ 
   popq rbp ++
   ret (*TEMPO !!!!! *)
@@ -410,7 +414,8 @@ let file ?debug:(b=false) dl =
   debug := b;
   (* TODO calcul offset champs *)
   List.iter set_offset_structs dl;
-  (* TODO code fonctions *) let funs = List.fold_left decl nop dl in
+  (* TODO code fonctions *)
+  let funs = List.fold_left decl nop dl in
   { text =
       globl "main" ++ label "main" ++
       call "F_main" ++
