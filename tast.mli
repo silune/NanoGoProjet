@@ -19,6 +19,7 @@ and field = {
          f_name: string;
           f_typ: typ;
   mutable f_ofs: int; (* relatif à l'adresse de l'objet *)
+        f_order: int;
 }
 
 and structure = {

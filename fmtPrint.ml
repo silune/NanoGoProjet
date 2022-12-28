@@ -6,7 +6,16 @@ let sizeof = Typing.sizeof
 (* ----- functions ----- *)
 
 let fields_to_lst f_hashtbl =
-  Hashtbl.fold (fun key f lst -> f :: lst) f_hashtbl []
+  let sort_fun f1 f2 =
+    if f1.f_order = f2.f_order then
+      0
+    else if f1.f_order > f2.f_order then
+      1
+    else
+      -1
+  in
+  let lst = Hashtbl.fold (fun key f lst -> f :: lst) f_hashtbl [] in
+  List.sort sort_fun lst
 
 let rec print_one = function
   | Tbool -> call "print_bool"
@@ -35,7 +44,7 @@ and print_field f =
 and print_field_lst fl = match fl with
   | [] -> nop
   | [f] -> print_field f
-  | f :: f_rest -> print_field_lst f_rest ++ call "print_space" ++ print_field f
+  | f :: f_rest -> print_field f ++ call "print_space" ++ print_field_lst f_rest
 
 and print_struct s =
   call "print_lbra" ++

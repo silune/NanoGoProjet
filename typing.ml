@@ -49,7 +49,7 @@ module EnvStruct = struct
         if Hashtbl.mem fields id then
           error loc ("structure field declaration conflict : two field with name \"" ^ id ^ "\" in " ^ id_struct);
         let typ = ptype_to_type ptyp in
-        Hashtbl.add fields id { f_name = id; f_typ = typ; f_ofs = 0 };
+        Hashtbl.add fields id { f_name = id; f_typ = typ; f_ofs = 0; f_order = (Hashtbl.length fields) };
         check_fields id_struct fields q
     | [] -> ()
 

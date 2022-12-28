@@ -24,6 +24,7 @@
 
 *)
 
+
 open Format
 open Ast
 open Tast
@@ -63,6 +64,7 @@ let empty_env =
   { exit_label = ""; ofs_this = -1; nb_locals = ref 0; next_local = 0 }
 
 let mk_bool d = { expr_desc = d; expr_typ = Tbool }
+let mk_ident v = { expr_desc = TEident v; expr_typ = v.v_typ }
 
 (* f reçoit le label correspondant à ``renvoyer vrai'' *)
 let compile_bool f =
@@ -74,26 +76,12 @@ let compile_bool f =
 (* general case of assignation, assuming val is on the stack and direction is in rdi *)
 let rec assign_lv_general = function
   | Tstruct s ->
-      popq r12 ++
-      Hashtbl.fold (fun key f code -> code ++ assign_field f) s.s_fields nop
+      popq rsi ++
+      movq (imm (sizeof (Tstruct s))) (reg rbx) ++
+      call "deep_copy"
   | _ ->
-      popq r12 ++
-      movq (reg r12) (ind rdi)
-
-and assign_field f =
-  movq (reg r12) (reg rbx) ++
-  addq (imm f.f_ofs) (reg rbx) ++
-  (match f.f_typ with
-    | Tstruct s ->
-        pushq (reg r12) ++
-        pushq (reg rbx) ++
-        assign_lv_general f.f_typ ++
-        popq r12
-    | _ ->
-        movq (ind rbx) (reg rax) ++
-        movq (reg rax) (ind rdi)) ++
-        addq (imm (sizeof f.f_typ)) (reg rdi)
-
+      popq rsi ++
+      movq (reg rsi) (ind rdi)
 
 let rec expr env e = match e.expr_desc with
   | TEskip ->
@@ -210,13 +198,10 @@ let rec expr env e = match e.expr_desc with
           call "print_space" ++
           expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
   
-  | TEident ({ v_typ = Tstruct _ } as x) ->
-      movq (ind rbp ~ofs:x.v_addr) (reg rdi)
 
   | TEident x ->
     (* TODO code pour x DONE *)
-      movq (ind rbp ~ofs:x.v_addr) (reg rdi) ++
-      movq (ind rdi) (reg rdi)
+      movq (ind rbp ~ofs:x.v_addr) (reg rdi)
 
   | TEassign (lvl, el) ->
       let assign_lv code lv =
@@ -278,13 +263,12 @@ let rec expr env e = match e.expr_desc with
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
   
-  | TEdot (_, { f_typ = Tstruct _ }) ->
-      l_val_addr env e
-  
-  | TEdot _ ->
+  | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
       l_val_addr env e ++
-      movq (ind rdi) (reg rdi)
+      (match f.f_typ with
+        | Tstruct _ -> nop
+        | _ -> movq (ind rdi) (reg rdi))
 
   | TEvars (vl, el) ->
      (* TODO créations de variables puis assignations *)
@@ -292,11 +276,15 @@ let rec expr env e = match e.expr_desc with
         env.nb_locals := !(env.nb_locals) + 1;
         v.v_addr <- -8 * !(env.nb_locals);
         code ++
-        movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
-        movq (reg rax) (ind rbp ~ofs:v.v_addr)
+        (match v.v_typ with
+          | Tstruct _ ->
+              movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
+              movq (reg rax) (ind rbp ~ofs:v.v_addr)
+          | _ ->
+              movq (imm 0) (ind rbp ~ofs:v.v_addr))
       in
       let assign_var code v =
-        movq (ind rbp ~ofs:v.v_addr) (reg rdi) ++
+        l_val_addr env (mk_ident v) ++
         assign_lv_general v.v_typ ++
         code
       in
@@ -326,7 +314,12 @@ let rec expr env e = match e.expr_desc with
 
 and l_val_addr env e = match e.expr_desc with
   | TEident x ->
-      movq (ind rbp ~ofs:x.v_addr) (reg rdi)
+      (match x.v_typ with
+        | Tstruct s ->
+            movq (ind rbp ~ofs:x.v_addr) (reg rdi)
+        | _ ->
+          movq (reg rbp) (reg rdi) ++
+          subq (imm x.v_addr) (reg rdi))
   | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi) ++
@@ -367,19 +360,28 @@ let decl code = function
   | TDfunction (f, e) -> code ++ function_ f e
   | TDstruct _ -> code
 
-(* ----- allocation functions ----- *)
+(* ----- memory gestion functions ----- *)
 
+(* size to alloc in bits in rdi *)
 let allocz_fun =
   label "allocz" ++
   movq (reg rdi) (reg rbx) ++
   call "malloc" ++
-  testq (reg rbx) (reg rbx) ++
-  jnz "1f" ++
-  ret ++
   label "1" ++
-  movb  (imm 0) (ind rax ~index:rbx) ++
   decq (reg rbx) ++
+  movb  (imm 0) (ind rax ~index:rbx) ++
+  testq (reg rbx) (reg rbx) ++
   jnz "1b" ++
+  ret
+
+(* source address in rsi, destination address in rdi, size to copy in rbx *)
+let deep_copy_fun =
+  label "deep_copy" ++
+  subq (imm 8) (reg rbx) ++
+  movq (ind rsi ~index:rbx) (reg rax) ++
+  movq (reg rax) (ind rdi ~index:rbx) ++
+  testq (reg rbx) (reg rbx) ++
+  jnz "deep_copy" ++
   ret
 
 (* ----- offset computing ----- *)
@@ -409,6 +411,7 @@ let file ?debug:(b=false) dl =
       ret ++
       funs ++
       allocz_fun ++
+      deep_copy_fun ++
       FmtPrint.print_functions;
 
    (* TODO print pour d'autres valeurs *)
