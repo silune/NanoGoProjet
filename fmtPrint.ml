@@ -5,6 +5,20 @@ let sizeof = Typing.sizeof
 
 (* ----- functions ----- *)
 
+let check_recursive_printing typ =
+  let rec aux lst = function
+    | Tstruct s ->
+        Hashtbl.fold (run_field (typ :: lst)) s.s_fields false
+    | Tptr newtyp -> aux lst newtyp
+    | _ -> false
+
+  and run_field lst key f res =
+    if List.mem f.f_typ lst then
+      true
+    else (aux lst f.f_typ) || res
+
+  in aux [] typ
+
 let fields_to_lst f_hashtbl =
   let sort_fun f1 f2 =
     if f1.f_order = f2.f_order then
@@ -17,7 +31,7 @@ let fields_to_lst f_hashtbl =
   let lst = Hashtbl.fold (fun key f lst -> f :: lst) f_hashtbl [] in
   List.sort sort_fun lst
 
-let rec print_one ?(go = false) = function
+let rec print_one_safe go = function
   | Tbool ->
       call "print_bool"
   | Tint ->
@@ -55,7 +69,7 @@ and print_inside go typ = match typ with
       popq rbx
   | Tbool | Tint | Tstring | Tptr _ ->
       movq (ind rax) (reg rdi) ++
-      print_one ~go:go typ
+      print_one_safe go typ
   | _ -> assert false (* impossible si bien typé *)
 
 and print_field go f =
@@ -72,6 +86,13 @@ and print_struct go s =
   call "print_lbra" ++
   print_field_lst go (fields_to_lst s.s_fields) ++
   call "print_rbra"
+
+let print_one ?(go = false) typ =
+  if (go && check_recursive_printing typ) then
+    (Printf.eprintf("\x1B[1;49;95mWarning\x1B[0m : risk of recursive printing, switching to Simon's printing for one printing\n");
+    print_one_safe false typ)
+  else
+    (print_one_safe go typ)
 
 (* ----- constants ----- *)
 

@@ -256,7 +256,16 @@ let rec expr env e = match e.expr_desc with
      (* TODO code pour new S DONE *)
       movq (imm (sizeof ty)) (reg rdi) ++
       call "allocz" ++
-      movq (reg rax) (reg rdi)
+      (match ty with
+        | Tstruct s ->
+            pushq (reg rax) ++
+            movq (imm 8) (reg rdi) ++
+            call "allocz" ++
+            popq rdi ++
+            movq (reg rdi) (ind rax) ++
+            movq (reg rax) (reg rdi)
+        | _ ->
+            movq (reg rax) (reg rdi))
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *) assert false
@@ -317,7 +326,7 @@ and l_val_addr env e = match e.expr_desc with
             movq (ind rbp ~ofs:x.v_addr) (reg rdi)
         | _ ->
           movq (reg rbp) (reg rdi) ++
-          subq (imm x.v_addr) (reg rdi))
+          addq (imm x.v_addr) (reg rdi))
   | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi) ++
