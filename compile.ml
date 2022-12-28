@@ -187,7 +187,8 @@ let rec expr env e = match e.expr_desc with
     movq (ind rdi) (reg rdi)
 
   | TEprint el ->
-    (* TODO code pour Print DONE *) (* my own version (do go version ?) *)
+    (* TODO code pour Print DONE *)
+    (* my own version *)(*
     (match el with
       | [] ->
           nop
@@ -196,8 +197,17 @@ let rec expr env e = match e.expr_desc with
       | ex :: ex_rest ->
           expr env ex ++ FmtPrint.print_one ex.expr_typ ++
           call "print_space" ++
-          expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})
-  
+          expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})*)
+    (* go version *)
+    (match el with
+      | [] ->
+          nop
+      | [ex] ->
+          expr env ex ++ FmtPrint.print_one ~go:true ex.expr_typ
+      | ex1 :: ex2 :: ex_rest ->
+          expr env ex1 ++ FmtPrint.print_one ~go:true ex1.expr_typ ++
+          (if ex1.expr_typ = Tstring || ex2.expr_typ = Tstring then nop else call "print_space") ++
+          expr env {expr_desc = TEprint (ex2 :: ex_rest) ; expr_typ = e.expr_typ})
 
   | TEident x ->
     (* TODO code pour x DONE *)
@@ -212,19 +222,7 @@ let rec expr env e = match e.expr_desc with
       let eval_vars = proper_eval_list env el in
       let assign_all_lv = List.fold_left assign_lv nop lvl in
       eval_vars ++ assign_all_lv
-(*
-  | TEassign ([{expr_desc=TEident x}], [e1]) ->
-    (* TODO code pour x = e *)
-    expr env e1 ++
-    movq (ind rbp ~ofs:x.v_addr) (reg rax) ++
-    movq (reg rdi) (ind rax)
 
-  | TEassign ([lv], [e1]) ->
-    (* TODO code pour x1,... = e1,... *) assert false
-
-  | TEassign (_, _) ->
-     assert false
-*)
   | TEblock el ->
      (* TODO code pour block *) (* TEMPO !!!! -> naive version *)
       List.fold_left (fun res e -> res ++ expr env e) nop el

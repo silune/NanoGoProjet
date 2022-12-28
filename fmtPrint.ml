@@ -17,38 +17,60 @@ let fields_to_lst f_hashtbl =
   let lst = Hashtbl.fold (fun key f lst -> f :: lst) f_hashtbl [] in
   List.sort sort_fun lst
 
-let rec print_one = function
-  | Tbool -> call "print_bool"
-  | Tint -> call "print_int"
-  | Tstring -> call "print_string"
-  | Tptr _ -> call "print_pointer"
-  | Tstruct s -> movq (reg rdi) (reg rbx) ++ print_struct s
+let rec print_one ?(go = false) = function
+  | Tbool ->
+      call "print_bool"
+  | Tint ->
+      call "print_int"
+  | Tstring ->
+      call "print_string"
+  | Tptr (Tstruct s) when go ->
+      movq (reg rdi) (reg rbx) ++
+      testq (reg rdi) (reg rdi) ++
+      je "print_nil" ++
+      call "print_esper" ++
+      print_struct go s
+  | Tptr _ when go ->
+      call "print_pointer_hex"
+  | Tptr _ ->
+      call "print_pointer"
+  | Tstruct s ->
+      movq (reg rdi) (reg rbx) ++
+      print_struct go s
   | _ -> assert false (* impossible si bien typé *)
 
-and print_inside typ = match typ with
+and print_inside go typ = match typ with
   | Tstruct s ->
       pushq (reg rbx) ++
       movq (reg rax) (reg rbx) ++
-      print_struct s ++
+      print_struct go s ++
+      popq rbx
+  | Tptr (Tstruct s) when go ->
+      pushq (reg rbx) ++
+      movq (ind rax) (reg rbx) ++
+      testq (reg rbx) (reg rbx) ++
+      je "print_nil" ++
+      call "print_esper" ++
+      print_struct go s ++
       popq rbx
   | Tbool | Tint | Tstring | Tptr _ ->
       movq (ind rax) (reg rdi) ++
-      print_one typ
+      print_one ~go:go typ
   | _ -> assert false (* impossible si bien typé *)
 
-and print_field f =
+and print_field go f =
   movq (reg rbx) (reg rax) ++
   addq (imm f.f_ofs) (reg rax) ++
-  print_inside f.f_typ
+  print_inside go f.f_typ
 
-and print_field_lst fl = match fl with
+and print_field_lst go fl = match fl with
   | [] -> nop
-  | [f] -> print_field f
-  | f :: f_rest -> print_field f ++ call "print_space" ++ print_field_lst f_rest
+  | [f] -> print_field go f
+  | f :: f_rest -> print_field go f ++ call "print_space" ++ print_field_lst go f_rest
 
-and print_struct s =
+and print_struct go s =
   call "print_lbra" ++
-  print_field_lst (fields_to_lst s.s_fields) ++
+  print_field_lst go (fields_to_lst s.s_fields) ++
   call "print_rbra"
 
 (* ----- constants ----- *)
@@ -82,6 +104,14 @@ let print_rbra =
 let data_print_rbra =
   label "S_rbra" ++ string "}"
 
+let print_esper =
+  label "print_esper" ++
+  movq (ilab "S_esper") (reg rdi) ++
+  print
+
+let data_print_esper =
+  label "S_esper" ++ string "&"
+
 let print_string =
   label "print_string" ++
   testq (reg rdi) (reg rdi) ++
@@ -98,6 +128,17 @@ let print_pointer =
   testq (reg rdi) (reg rdi) ++
   je "print_nil" ++
   jmp "print_int"
+
+let print_pointer_hex =
+  label "print_pointer_hex" ++
+  testq (reg rdi) (reg rdi) ++
+  je "print_nil" ++
+  movq (reg rdi) (reg rsi) ++
+  movq (ilab "S_pointer_hex") (reg rdi) ++
+  print
+
+let data_print_pointer_hex =
+  label "S_pointer_hex" ++ string "0x%x"
 
 let print_nil = 
   label "print_nil" ++
@@ -135,8 +176,10 @@ let print_functions =
   print_space ++
   print_lbra ++
   print_rbra ++
+  print_esper ++
   print_string ++
   print_pointer ++
+  print_pointer_hex ++
   print_nil ++
   print_int ++
   print_bool
@@ -145,7 +188,9 @@ let print_data =
   data_print_space ++
   data_print_lbra ++
   data_print_rbra ++
+  data_print_esper ++
   data_print_string ++
+  data_print_pointer_hex ++
   data_print_nil ++
   data_print_int ++
   data_print_bool
