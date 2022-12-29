@@ -78,6 +78,7 @@ let compile_bool f =
 
 (* general case of assignation, assuming val is on the stack and direction is in rdi *)
 let rec assign_lv_general = function
+  | Twild -> nop
   | Tstruct s ->
       popq rsi ++
       movq (imm (sizeof (Tstruct s))) (reg rbx) ++
@@ -155,6 +156,12 @@ let rec expr env e = match e.expr_desc with
 
   | TEbinop (Beq | Bne as op, e1, e2) ->
     (* TODO code pour egalite toute valeur *)
+    let rec wich_eq = function
+      | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi)
+      | Tstring -> call "strcmp@PLT" ++ cmpl (imm 0) (reg eax)
+      | Tmany [typ] -> wich_eq typ
+      | _ -> assert false (* TODO egualité autres types *)
+    in
     let eq_jmp = match op with
       | Beq -> je
       | Bne -> jne
@@ -163,10 +170,8 @@ let rec expr env e = match e.expr_desc with
     expr env e1 ++ pushq (reg rdi) ++
     expr env e2 ++ pushq (reg rdi) ++
     popq rsi ++ popq rdi ++
-    (match e1.expr_typ with
-      | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi) ++ compile_bool eq_jmp
-      | Tstring -> call "strcmp@PLT" ++ cmpl (imm 0) (reg eax) ++ compile_bool eq_jmp
-      | _ -> assert false (* TODO egualité autres types *))
+    wich_eq e1.expr_typ ++
+    compile_bool eq_jmp
 
   | TEunop (Uneg, e1) ->
     (* TODO code pour negation ints DONE *)
@@ -291,6 +296,7 @@ let rec expr env e = match e.expr_desc with
   | TEvars (vl, el) ->
      (* TODO créations de variables puis assignations *)
       let add_var code v =
+        if v.v_name = "_" then nop else (
         env.nb_locals := !(env.nb_locals) + 1;
         v.v_addr <- -8 * !(env.nb_locals);
         code ++
@@ -299,7 +305,7 @@ let rec expr env e = match e.expr_desc with
               movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
               movq (reg rax) (ind rbp ~ofs:v.v_addr)
           | _ ->
-              movq (imm 0) (ind rbp ~ofs:v.v_addr))
+              movq (imm 0) (ind rbp ~ofs:v.v_addr)))
       in
       let assign_var code v =
         code ++
@@ -337,6 +343,7 @@ let rec expr env e = match e.expr_desc with
 
 and l_val_addr env e = match e.expr_desc with
   | TEident x ->
+      if x.v_name = "_" then nop else
       (match x.v_typ with
         | Tstruct s ->
             movq (ind rbp ~ofs:x.v_addr) (reg rdi)
