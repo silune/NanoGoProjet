@@ -220,9 +220,9 @@ let rec expr env e = match e.expr_desc with
 
   | TEassign (lvl, el) ->
       let assign_lv code lv =
+        code ++
         l_val_addr env lv ++
-        assign_lv_general lv.expr_typ ++
-        code
+        assign_lv_general lv.expr_typ
       in
       let eval_vars = proper_eval_list env el in
       let assign_all_lv = List.fold_left assign_lv nop lvl in
@@ -274,10 +274,12 @@ let rec expr env e = match e.expr_desc with
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *)
-      let resize_stack = 8 * (List.length f.fn_params) in
+      let return_size = 8 * (List.length f.fn_typ) in
+      let params_size = 8 * (List.length f.fn_params) in
+      subq (imm return_size) (reg rsp) ++
       proper_eval_list env el ++
       call ("F_" ^ f.fn_name) ++
-      addq (imm resize_stack) (reg rsp)
+      addq (imm (params_size + return_size)) (reg rsp)
   
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
@@ -300,9 +302,9 @@ let rec expr env e = match e.expr_desc with
               movq (imm 0) (ind rbp ~ofs:v.v_addr))
       in
       let assign_var code v =
+        code ++
         l_val_addr env (mk_ident v) ++
-        assign_lv_general v.v_typ ++
-        code
+        assign_lv_general v.v_typ
       in
       let add_all_vars = List.fold_left add_var nop vl in
       let eval_exprs = proper_eval_list env el in
@@ -351,16 +353,15 @@ and proper_eval_list env e_lst = match e_lst with
   | [{expr_desc = TEcall _ }] ->
       assert false (* TODO (composition de fonctions) *)
   | _ ->
-      List.fold_left (fun code e -> code ++ expr env e ++ pushq (reg rdi)) nop e_lst
+      List.fold_left (fun code e -> expr env e ++ pushq (reg rdi) ++ code) nop e_lst
 
 let set_up_params params =
-  let tot_params = List.length params in
   let rec aux lst i = match lst with
     | [] -> ()
     | param ::rest ->
-        param.v_addr <- 8 * (tot_params - i + 1); (* 1 for return address on the stack *)
+        param.v_addr <- 8 * i;
         aux rest (i + 1)
-  in aux params 0
+  in aux params 2 (* +1 for return address on the stack *)
 
 let rec set_up_structs params =  match params with
   | ({v_typ = Tstruct s} as param) :: rest_params ->
