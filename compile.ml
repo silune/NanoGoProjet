@@ -76,6 +76,11 @@ let compile_bool f =
   movq (imm 0) (reg rdi) ++ jmp l_end ++
   label l_true ++ movq (imm 1) (reg rdi) ++ label l_end
 
+let rec is_struct = function
+  | Tstruct _ -> true
+  | Tmany [typ] -> is_struct typ
+  | _ -> false
+
 (* general case of assignation, assuming val is on the stack and direction is in rdi *)
 let rec assign_lv_general = function
   | Twild -> nop
@@ -83,6 +88,7 @@ let rec assign_lv_general = function
       popq rsi ++
       movq (imm (sizeof (Tstruct s))) (reg rbx) ++
       call "deep_copy"
+  | Tmany [typ] -> assign_lv_general typ
   | _ ->
       popq rsi ++
       movq (reg rsi) (ind rdi)
@@ -289,9 +295,10 @@ let rec expr env e = match e.expr_desc with
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
       l_val_addr env e ++
-      (match f.f_typ with
-        | Tstruct _ -> nop
-        | _ -> movq (ind rdi) (reg rdi))
+      (if is_struct f.f_typ then
+        nop
+      else
+        movq (ind rdi) (reg rdi))
 
   | TEvars (vl, el) ->
      (* TODO créations de variables puis assignations *)
@@ -300,12 +307,11 @@ let rec expr env e = match e.expr_desc with
         env.nb_locals := !(env.nb_locals) + 1;
         v.v_addr <- -8 * !(env.nb_locals);
         code ++
-        (match v.v_typ with
-          | Tstruct _ ->
-              movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
-              movq (reg rax) (ind rbp ~ofs:v.v_addr)
-          | _ ->
-              movq (imm 0) (ind rbp ~ofs:v.v_addr)))
+        (if is_struct v.v_typ then 
+            movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
+            movq (reg rax) (ind rbp ~ofs:v.v_addr)
+        else
+            movq (imm 0) (ind rbp ~ofs:v.v_addr)))
       in
       let assign_var code v =
         code ++
@@ -343,13 +349,13 @@ let rec expr env e = match e.expr_desc with
 
 and l_val_addr env e = match e.expr_desc with
   | TEident x ->
-      if x.v_name = "_" then nop else
-      (match x.v_typ with
-        | Tstruct s ->
-            movq (ind rbp ~ofs:x.v_addr) (reg rdi)
-        | _ ->
-          movq (reg rbp) (reg rdi) ++
-          addq (imm x.v_addr) (reg rdi))
+      if x.v_name = "_" then
+        nop
+      else if is_struct x.v_typ then
+        movq (ind rbp ~ofs:x.v_addr) (reg rdi)
+      else
+        movq (reg rbp) (reg rdi) ++
+        addq (imm x.v_addr) (reg rdi)
   | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi) ++
@@ -380,8 +386,8 @@ let set_up_params params =
   in aux params 2 (* +1 for return address on the stack *)
 
 let rec set_up_structs params =  match params with
-  | ({v_typ = Tstruct s} as param) :: rest_params ->
-      let size_s = sizeof (Tstruct s) in
+  | param :: rest_params when is_struct param.v_typ ->
+      let size_s = sizeof param.v_typ in
       pushq (ind rbp ~ofs:param.v_addr) ++
       movq (imm size_s) (reg rdi) ++
       call "allocz" ++
