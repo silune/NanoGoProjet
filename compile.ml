@@ -187,7 +187,9 @@ let rec expr env e = match e.expr_desc with
   | TEunop (Ustar, e1) ->
     (* TODO code pour * DONE *)
     l_val_addr env e ++
-    movq (ind rdi) (reg rdi)
+    (match e.expr_typ with
+      | Tstruct _ -> nop
+      | _ -> movq (ind rdi) (reg rdi))
 
   | TEprint el ->
     (* TODO code pour Print DONE *)
@@ -272,9 +274,10 @@ let rec expr env e = match e.expr_desc with
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *)
-      (match el with
-        | [] -> call ("F_" ^ f.fn_name)
-        | _ -> assert false) (* TODO *)
+      let resize_stack = 8 * (List.length f.fn_params) in
+      proper_eval_list env el ++
+      call ("F_" ^ f.fn_name) ++
+      addq (imm resize_stack) (reg rsp)
   
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
@@ -346,19 +349,45 @@ and proper_eval_list env e_lst = match e_lst with
   | [] ->
       nop
   | [{expr_desc = TEcall _ }] ->
-      assert false (* TODO *)
+      assert false (* TODO (composition de fonctions) *)
   | _ ->
       List.fold_left (fun code e -> code ++ expr env e ++ pushq (reg rdi)) nop e_lst
+
+let set_up_params params =
+  let tot_params = List.length params in
+  let rec aux lst i = match lst with
+    | [] -> ()
+    | param ::rest ->
+        param.v_addr <- 8 * (tot_params - i + 1); (* 1 for return address on the stack *)
+        aux rest (i + 1)
+  in aux params 0
+
+let rec set_up_structs params =  match params with
+  | ({v_typ = Tstruct s} as param) :: rest_params ->
+      let size_s = sizeof (Tstruct s) in
+      pushq (ind rbp ~ofs:param.v_addr) ++
+      movq (imm size_s) (reg rdi) ++
+      call "allocz" ++
+      popq rsi ++
+      movq (reg rax) (reg rdi) ++
+      movq (imm size_s) (reg rbx) ++
+      call "deep_copy" ++
+      movq (reg rdi) (ind rbp ~ofs:param.v_addr)
+  | _ ->
+      nop
+
 
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
   (* TODO code pour fonction *)
+  set_up_params f.fn_params;
   let s = f.fn_name in
   let env_fun = new_env ("E_" ^ s) 0 in
   let expr_fun = expr env_fun e in
   label ("F_" ^ s) ++
   pushq (reg rbp) ++
   movq (reg rsp) (reg rbp) ++
+  set_up_structs f.fn_params ++
   subq (imm (!(env_fun.nb_locals) * 8)) (reg rsp) ++
   expr_fun ++
   label env_fun.exit_label ++
