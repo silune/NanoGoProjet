@@ -9,7 +9,8 @@ let check_recursive_printing typ =
   let rec aux lst = function
     | Tstruct s ->
         Hashtbl.fold (run_field (typ :: lst)) s.s_fields false
-    | Tptr newtyp -> aux lst newtyp
+    | Tptr typ1 -> aux lst typ1
+    | Tmany [typ1] -> aux lst typ1
     | _ -> false
 
   and run_field lst key f res =
@@ -51,7 +52,8 @@ let rec print_one_safe go = function
   | Tstruct s ->
       movq (reg rdi) (reg rbx) ++
       print_struct go s
-  | _ -> assert false (* impossible si bien typé *)
+  | Tmany [typ] -> print_one_safe go typ
+  | typ -> Printf.printf "%s\n" (Typing.string_of_type typ); assert false (* impossible si bien typé *)
 
 and print_inside go typ = match typ with
   | Tstruct s ->

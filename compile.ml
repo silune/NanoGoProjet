@@ -193,26 +193,22 @@ let rec expr env e = match e.expr_desc with
 
   | TEprint el ->
     (* TODO code pour Print DONE *)
-    (* my own version *)(*
-    (match el with
+    let rec run_printing = function
       | [] ->
           nop
-      | [ex] ->
-          expr env ex ++ FmtPrint.print_one ex.expr_typ
-      | ex :: ex_rest ->
-          expr env ex ++ FmtPrint.print_one ex.expr_typ ++
-          call "print_space" ++
-          expr env {expr_desc = TEprint ex_rest ; expr_typ = e.expr_typ})*)
-    (* go version *)
-    (match el with
-      | [] ->
-          nop
-      | [ex] ->
-          expr env ex ++ FmtPrint.print_one ~go:true ex.expr_typ
-      | ex1 :: ex2 :: ex_rest ->
-          expr env ex1 ++ FmtPrint.print_one ~go:true ex1.expr_typ ++
-          (if ex1.expr_typ = Tstring || ex2.expr_typ = Tstring then nop else call "print_space") ++
-          expr env {expr_desc = TEprint (ex2 :: ex_rest) ; expr_typ = e.expr_typ})
+      | [typ] ->
+          popq rdi ++ FmtPrint.print_one ~go:true typ
+      | typ1 :: typ2 :: typ_rest ->
+          popq rdi ++ FmtPrint.print_one ~go:true typ1 ++
+          (if typ1 = Tstring || typ2 = Tstring then nop else call "print_space") ++
+          run_printing (typ2 :: typ_rest)
+    in
+    let type_lst = function
+      | [{ expr_desc = TEcall (f, _) }] -> f.fn_typ
+      | el -> List.map (fun ex -> ex.expr_typ) el
+    in
+    proper_eval_list env el ++
+    run_printing (type_lst el)
 
   | TEident x ->
     (* TODO code pour x DONE *)
@@ -321,10 +317,11 @@ let rec expr env e = match e.expr_desc with
       | [] ->
           nop
       | ex :: rest ->
-          expr env ex ++
+          popq rdi ++
           movq (reg rdi) (ind rbp ~ofs:ofs_ret) ++
-          eval_ret rest (ofs_ret - 8)
+          eval_ret rest (ofs_ret + 8)
     in
+    proper_eval_list env el ++
     eval_ret el env.ofs_this ++
     jmp env.exit_label
 
@@ -395,7 +392,7 @@ let function_ f e =
   (* TODO code pour fonction *)
   set_up_params f.fn_params;
   let s = f.fn_name in
-  let ofs_fun = 8 + 8 * (List.length f.fn_typ) + 8 * (List.length f.fn_params) in
+  let ofs_fun = 16 + 8 * (List.length f.fn_params) in
   let env_fun = new_env ("E_" ^ s) ofs_fun in
   let expr_fun = expr env_fun e in
   label ("F_" ^ s) ++
