@@ -279,7 +279,11 @@ let rec expr env e = match e.expr_desc with
       subq (imm return_size) (reg rsp) ++
       proper_eval_list env el ++
       call ("F_" ^ f.fn_name) ++
-      addq (imm (params_size + return_size)) (reg rsp)
+      (if (List.length f.fn_typ) = 1 then
+        addq (imm (params_size)) (reg rsp) ++
+        popq rdi
+      else
+        addq (imm (params_size + return_size)) (reg rsp))
   
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
@@ -313,9 +317,16 @@ let rec expr env e = match e.expr_desc with
 
   | TEreturn el ->
     (* TODO code pour return *)
-    (match el with
-      | [] -> jmp env.exit_label
-      | _ -> assert false) (* TODO *)
+    let rec eval_ret e_lst ofs_ret = match e_lst with
+      | [] ->
+          nop
+      | ex :: rest ->
+          expr env ex ++
+          movq (reg rdi) (ind rbp ~ofs:ofs_ret) ++
+          eval_ret rest (ofs_ret - 8)
+    in
+    eval_ret el env.ofs_this ++
+    jmp env.exit_label
 
   | TEincdec (e1, op) ->
     (* TODO code pour return e++, e-- DONE *)
@@ -350,8 +361,9 @@ and l_val_addr env e = match e.expr_desc with
 and proper_eval_list env e_lst = match e_lst with
   | [] ->
       nop
-  | [{expr_desc = TEcall _ }] ->
-      assert false (* TODO (composition de fonctions) *)
+  | [{expr_desc = TEcall (f, _) } as ex] ->
+      expr env ex ++
+      subq (imm (8 * (List.length f.fn_typ))) (reg rsp)
   | _ ->
       List.fold_left (fun code e -> expr env e ++ pushq (reg rdi) ++ code) nop e_lst
 
@@ -383,7 +395,8 @@ let function_ f e =
   (* TODO code pour fonction *)
   set_up_params f.fn_params;
   let s = f.fn_name in
-  let env_fun = new_env ("E_" ^ s) 0 in
+  let ofs_fun = 8 + 8 * (List.length f.fn_typ) + 8 * (List.length f.fn_params) in
+  let env_fun = new_env ("E_" ^ s) ofs_fun in
   let expr_fun = expr env_fun e in
   label ("F_" ^ s) ++
   pushq (reg rbp) ++
