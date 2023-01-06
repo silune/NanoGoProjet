@@ -355,6 +355,7 @@ and l_val_addr env e = match e.expr_desc with
   | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
       l_val_addr env e1 ++
       movq (ind rdi) (reg rdi) ++
+      movq (ind rdi) (reg rdi) ++
       addq (imm f1.f_ofs) (reg rdi)
   | TEdot (e1, f1) ->
       l_val_addr env e1 ++
@@ -423,7 +424,6 @@ let decl code = function
 (* ----- memory gestion functions ----- *)
 
 (* size to alloc in bits in rdi *)
-(*
 let allocz_fun =
   label "allocz" ++
   movq (reg rdi) (reg rbx) ++
@@ -432,19 +432,6 @@ let allocz_fun =
   decq (reg rbx) ++
   movb  (imm 0) (ind rax ~index:rbx) ++
   testq (reg rbx) (reg rbx) ++
-  jnz "1b" ++
-  ret
-*)
-let allocz_fun =
-  label "allocz" ++
-  movq (reg rdi) (reg rbx) ++
-  call "malloc" ++
-  testq (reg rbx) (reg rbx) ++
-  jnz "1f" ++
-  ret ++
-  label "1" ++
-  movb  (imm 0) (ind rax ~index:rbx) ++
-  decq (reg rbx) ++
   jnz "1b" ++
   ret
 
