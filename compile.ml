@@ -3,11 +3,8 @@
      E_function      sortie fonction
      L_xxx           sauts
      S_xxx           chaîne
-
    expression calculée avec la pile si besoin, résultat final dans %rdi
-
    fonction : arguments sur la pile, résultat dans %rax ou sur la pile
-
             res k
             ...
             res 1
@@ -21,7 +18,6 @@
             ...
             calculs
    rsp ---> ...
-
 *)
 
 
@@ -427,6 +423,7 @@ let decl code = function
 (* ----- memory gestion functions ----- *)
 
 (* size to alloc in bits in rdi *)
+(*
 let allocz_fun =
   label "allocz" ++
   movq (reg rdi) (reg rbx) ++
@@ -435,6 +432,19 @@ let allocz_fun =
   decq (reg rbx) ++
   movb  (imm 0) (ind rax ~index:rbx) ++
   testq (reg rbx) (reg rbx) ++
+  jnz "1b" ++
+  ret
+*)
+let allocz_fun =
+  label "allocz" ++
+  movq (reg rdi) (reg rbx) ++
+  call "malloc" ++
+  testq (reg rbx) (reg rbx) ++
+  jnz "1f" ++
+  ret ++
+  label "1" ++
+  movb  (imm 0) (ind rax ~index:rbx) ++
+  decq (reg rbx) ++
   jnz "1b" ++
   ret
 

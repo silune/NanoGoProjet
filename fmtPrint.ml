@@ -40,7 +40,7 @@ let rec print_one_safe go = function
   | Tstring ->
       call "print_string"
   | Tptr (Tstruct s) when go ->
-      movq (reg rdi) (reg rbx) ++
+      movq (ind rdi) (reg rbx) ++
       testq (reg rdi) (reg rdi) ++
       je "print_nil" ++
       call "print_esper" ++
