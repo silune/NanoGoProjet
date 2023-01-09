@@ -6,18 +6,16 @@ let sizeof = Typing.sizeof
 (* ----- functions ----- *)
 
 let check_recursive_printing typ =
-  let rec aux lst = function
-    | Tstruct s ->
-        Hashtbl.fold (run_field (typ :: lst)) s.s_fields false
+  let rec aux lst t =
+    if List.mem t lst then
+      true
+    else
+      match t with
+      | Tstruct s ->
+        Hashtbl.fold (fun key f res -> (aux (t :: lst) f.f_typ) || res) s.s_fields false
     | Tptr typ1 -> aux lst typ1
     | Tmany [typ1] -> aux lst typ1
     | _ -> false
-
-  and run_field lst key f res =
-    if List.mem f.f_typ lst then
-      true
-    else (aux lst f.f_typ) || res
-
   in aux [] typ
 
 let fields_to_lst f_hashtbl =
@@ -45,10 +43,8 @@ let rec print_one_safe go = function
       je "print_nil" ++
       call "print_esper" ++
       print_struct go s
-  | Tptr _ when go ->
-      call "print_pointer_hex"
   | Tptr _ ->
-      call "print_pointer"
+      call "print_pointer_hex"
   | Tstruct s ->
       movq (reg rdi) (reg rbx) ++
       print_struct go s
@@ -91,7 +87,7 @@ and print_struct go s =
 
 let print_one ?(go = false) typ =
   if (go && check_recursive_printing typ) then
-    (Printf.eprintf("\x1B[1;49;95mWarning\x1B[0m : risk of recursive printing, switching to Simon's printing for one printing\n");
+    (Printf.eprintf("\x1B[1;49;95mWarning\x1B[0m : risk of recursive printing, switching to simple print for one print\n");
     print_one_safe false typ)
   else
     (print_one_safe go typ)
@@ -146,12 +142,6 @@ let print_string =
 let data_print_string =
   label "S_string" ++ string "%s"
 
-let print_pointer =
-  label "print_pointer" ++
-  testq (reg rdi) (reg rdi) ++
-  je "print_nil" ++
-  jmp "print_int"
-
 let print_pointer_hex =
   label "print_pointer_hex" ++
   testq (reg rdi) (reg rdi) ++
@@ -201,7 +191,6 @@ let print_functions =
   print_rbra ++
   print_esper ++
   print_string ++
-  print_pointer ++
   print_pointer_hex ++
   print_nil ++
   print_int ++
