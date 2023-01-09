@@ -178,7 +178,7 @@ let print_int =
   print
 
 let data_print_int =
-  label "S_int" ++ string "%d" 
+  label "S_int" ++ string "%ld" 
 
 let print_bool =
   label "print_bool" ++
