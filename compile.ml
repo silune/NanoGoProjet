@@ -224,7 +224,7 @@ let rec expr env e = match e.expr_desc with
           (typ1, not (eq_type typ1 Tstring || eq_type typ2 Tstring)) :: run_printing (typ2 :: typ_rest)
     in
     let print_expr (typ, print_space) =
-      FmtPrint.print_one ~go:true typ ++
+      FmtPrint.print_one typ ++
       (if print_space then call "print_space" else nop)
     in
     efficient_eval_list env el print_expr (run_printing (type_of_lst el))
@@ -488,12 +488,12 @@ let file ?debug:(b=false) dl =
       ret ++
       funs ++
       allocz_fun ++
-      FmtPrint.print_functions;
+      !FmtPrint.print_functions;
 
    (* TODO print pour d'autres valeurs *)
    (* TODO appel malloc de stdlib *)
     data =
-      FmtPrint.print_data ++
+      !FmtPrint.print_data ++
       (Hashtbl.fold (fun l s d -> label l ++ string s ++ d) strings nop)
     ;
   }
