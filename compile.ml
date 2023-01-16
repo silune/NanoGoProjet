@@ -203,6 +203,19 @@ let rec expr env e = match e.expr_desc with
       | Tint | Tbool | Tptr _ -> cmpq (reg rsi) (reg rdi)
       | Tstring -> call "strcmp@PLT" ++ cmpl (imm 0) (reg eax)
       | Tmany [typ] -> wich_eq typ
+      | (Tstruct s) as typ_s ->
+          let l_start = new_label () in
+          let l_end = new_label () in
+          movq (imm (sizeof typ_s)) (reg rbx) ++
+          label l_start ++
+          subq (imm 8) (reg rbx) ++
+          movq (ind rdi ~index:rbx) (reg rax) ++
+          movq (ind rsi ~index:rbx) (reg r12) ++
+          cmpq (reg rax) (reg r12) ++
+          jne l_end ++
+          testq (reg rbx) (reg rbx) ++
+          jnz l_start ++
+          label l_end
       | _ -> assert false (* TODO egualité autres types *)
     in
     let eq_jmp = match op with
