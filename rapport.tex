@@ -43,4 +43,35 @@
 
 \end{titlepage}
 
+\section{Typage}
+
+Le typage s'effectue par un simple parcours de l'arbre, lorsqu'on rencontre une variable l'expression assingée (ou les annotations de type) permet de l'ajouter à l'environnement typée. Pour l'ensemble des expressions on suit les règles de typages grâce à des appels récursifs.
+
+\subsection{Types}
+
+Les types avant typage (\verb|ptype|) sont transformé récursivement en type : \\
+ - les types \verb|bool|, \verb|int| et \verb|string| sont connus \\
+ - les types pointeurs sont appelés récursivement \\
+ - les types structures sont recherchés dans l'environnement de structure et traité en conséquence (ce test est réalisé en premier pour prevenir la situation d'une redefinition d'un type connu)
+
+Les types \verb|Tmany [ ... ]| permettent de désigner le type d'un appel de fonctions ou plus généralement d'une liste d'expression.
+
+Le type \verb|Twild| permet de désigner un type abstrait quelconque (par exemple les expressions \verb|nil| ou \verb|"_"|)
+
+Les égalitées de types sont de également gérée récursivement. Un cas spécial est réservé aux types de la forme \verb|Tmany[typ]| qui sont, dans l'ensemble de mon projet, assimilées au type \verb|typ| simple. Ceci nécéssite de gérer les cas particulier régulièrement mais simplifie le typage des fonctions.
+
+\subsection{Environnements et variables}
+
+Ici on compte trois structures d'environnement différents : des \verb|Hashtabl| de \verb|String| pour les fonctions et les structures, une \verb|Map.Make(String)| pour les variables. Cette dèrnière structure, plus locale, est plus simple à utiliser lorsqu'il s'agit de gérer la portée des variables.
+
+Avant d'ajouter un élément à l'un de ces environnements on vérifie toujours s'il n'y est pas déjà.
+
+Le cas des variables est particulier : on a besoin d'autoriser l'initialisation de deux variables de même nom dans des blocs distincts. Pour cela je dispose d'une variable globale \verb|depth| qui est incrémenté lors du parcours d'un sous bloc et décrémenté lors de sa sortie. Ainsi avant d'ajouter une variable à un environnement, je vérifie s'il en existe déjà une dans celui ci, et à cette profondeur.
+
+Le nom de variable \verb|"_"| est toujours considéré présent dans l'environnement, de type \verb|Twild|, il ne peut pas y être ajouté (et sera ignorer à la compilation).
+
+\subsection{Left-values}
+
+Dans l'idée de suivre le plus fidèlement possible les règles de typages, le typage des left-values est traité par une fonction auxiliaire. Cette fonction et celle qui type l'arbre syntaxique principal s'appellent mutuellement en suivant les règles de typage.
+
 \end{document}
