@@ -30,6 +30,10 @@ exception Anomaly of string
 
 let debug = ref false
 
+(* ----- AUXILARY FUNCTIONS ----- *)
+
+(* ----- label gestion ----- *)
+
 let strings = Hashtbl.create 32
 let alloc_string =
   let r = ref 0 in
@@ -39,39 +43,14 @@ let alloc_string =
     Hashtbl.add strings l s;
     l
 
-let malloc n = movq (imm n) (reg rdi) ++ call "malloc"
-let allocz n = movq (imm n) (reg rdi) ++ call "allocz"
-
-let set_up_div = movq (reg rdi) (reg rax) ++ cqto
-
-let sizeof = Typing.sizeof
-let eq_type = Typing.eq_type
-
 let new_label =
   let r = ref 0 in fun () -> incr r; "L_" ^ string_of_int !r
 
-type env = {
-  exit_label: string;
-  ofs_this: int;
-  nb_locals: int ref; (* maximum *)
-  next_local: int; (* 0, 1, ... *)
-}
 
-let empty_env =
-  { exit_label = "" ; ofs_this = -1 ; nb_locals = ref 0 ; next_local = 0 }
+(* ----- type gestion ----- *)
 
-let new_env exit ofs =
-  { exit_label = exit ; ofs_this = ofs ; nb_locals = ref 0 ; next_local = 0 }
-
-let mk_bool d = { expr_desc = d; expr_typ = Tbool }
-let mk_ident v = { expr_desc = TEident v; expr_typ = v.v_typ }
-
-(* f reçoit le label correspondant à ``renvoyer vrai'' *)
-let compile_bool f =
-  let l_true = new_label () and l_end = new_label () in
-  f l_true ++
-  movq (imm 0) (reg rdi) ++ jmp l_end ++
-  label l_true ++ movq (imm 1) (reg rdi) ++ label l_end
+let sizeof = Typing.sizeof
+let eq_type = Typing.eq_type
 
 let rec is_struct = function
   | Tstruct _ -> true
@@ -87,6 +66,22 @@ let type_of_lst = function
   | [{ expr_desc = TEcall (f, _) }] -> f.fn_typ
   | el -> List.map (fun ex -> ex.expr_typ) el
 
+
+(* ----- code shortcut ----- *)
+
+let malloc n = movq (imm n) (reg rdi) ++ call "malloc"
+let allocz n = movq (imm n) (reg rdi) ++ call "allocz"
+
+let set_up_div = movq (reg rdi) (reg rax) ++ cqto
+
+(* f reçoit le label correspondant à ``renvoyer vrai'' *)
+let compile_bool f =
+  let l_true = new_label () and l_end = new_label () in
+  f l_true ++
+  movq (imm 0) (reg rdi) ++ jmp l_end ++
+  label l_true ++ movq (imm 1) (reg rdi) ++ label l_end
+
+(* ----- memory gestion code ----- *)
 
 (* deep_copy function, warning : %rax and %rbx are used *)
 (* source and destination are register with the address to copy in *)
@@ -104,6 +99,36 @@ let rec assign address value = function
   | Tstruct s -> deep_copy_fun value address (sizeof (Tstruct s))
   | Tmany [typ] -> assign address value typ
   | _ -> movq (reg value) (ind address)
+
+(* size to alloc in bits in rdi *)
+let allocz_fun =
+  label "allocz" ++
+  movq (reg rdi) (reg rbx) ++
+  call "malloc" ++
+  label "1" ++
+  decq (reg rbx) ++
+  movb  (imm 0) (ind rax ~index:rbx) ++
+  testq (reg rbx) (reg rbx) ++
+  jnz "1b" ++
+  ret
+
+(* ----- env gestion ----- *)
+
+type env = {
+  exit_label: string;
+  ofs_this: int;
+  nb_locals: int ref; (* maximum *)
+  next_local: int; (* 0, 1, ... *)
+}
+
+let new_env exit ofs =
+  { exit_label = exit ; ofs_this = ofs ; nb_locals = ref 0 ; next_local = 0 }
+
+
+
+(* ----- CODE GENERATION ----- *)
+
+(* ----- main code generator functions ----- *)
 
 let rec expr env e = match e.expr_desc with
   | TEskip ->
@@ -275,8 +300,7 @@ let rec expr env e = match e.expr_desc with
 
   | TEnew ty ->
      (* TODO code pour new S DONE *)
-      movq (imm (sizeof ty)) (reg rdi) ++
-      call "allocz" ++
+      allocz (sizeof ty) ++
       movq (reg rax) (reg rdi)
 
   | TEcall (f, el) ->
@@ -319,12 +343,12 @@ let rec expr env e = match e.expr_desc with
           | false, false ->
               movq (reg rdi) (ind rbp ~ofs:v.v_addr)
           | true, true ->
-              movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
+              allocz (sizeof v.v_typ) ++
               movq (reg rax) (ind rbp ~ofs:v.v_addr)
           | true, false ->
               let struct_size = sizeof v.v_typ in
               pushq (reg rdi) ++
-              movq (imm struct_size) (reg rdi) ++ call "malloc" ++
+              malloc struct_size ++
               movq (reg rax) (reg rsi) ++
               popq rdi ++
               deep_copy_fun rdi rsi struct_size)
@@ -400,6 +424,11 @@ and efficient_eval_list : 'a. env -> Tast.expr list -> ('a -> X86_64.text) -> 'a
   | _ ->
       List.fold_left2 (fun code ex arg -> code ++ expr env ex ++ exec arg) nop e_lst exec_arg_lst
 
+
+
+(* ----- SETUP FUNCTIONS ----- *)
+
+(* ----- setup functions args ----- *)
 let set_up_params params =
   let rec aux lst i = match lst with
     | [] -> ()
@@ -412,15 +441,13 @@ let rec set_up_structs params =  match params with
   | param :: rest_params when is_struct param.v_typ ->
       let size_s = sizeof param.v_typ in
       pushq (ind rbp ~ofs:param.v_addr) ++
-      movq (imm size_s) (reg rdi) ++
-      call "malloc" ++
+      malloc size_s ++
       movq (reg rax) (reg rdi) ++
       popq rsi ++
       deep_copy_fun rsi rdi size_s ++
       movq (reg rdi) (ind rbp ~ofs:param.v_addr)
   | _ ->
       nop
-
 
 let function_ f e =
   if !debug then eprintf "function %s:@." f.fn_name;
@@ -440,27 +467,9 @@ let function_ f e =
   movq (reg rbp) (reg rsp) ++ 
   popq rbp ++
   ret (*TEMPO !!!!! *)
-  
 
-let decl code = function
-  | TDfunction (f, e) -> code ++ function_ f e
-  | TDstruct _ -> code
 
-(* ----- memory gestion functions ----- *)
-
-(* size to alloc in bits in rdi *)
-let allocz_fun =
-  label "allocz" ++
-  movq (reg rdi) (reg rbx) ++
-  call "malloc" ++
-  label "1" ++
-  decq (reg rbx) ++
-  movb  (imm 0) (ind rax ~index:rbx) ++
-  testq (reg rbx) (reg rbx) ++
-  jnz "1b" ++
-  ret
-
-(* ----- offset computing ----- *)
+(* ----- setup offset ----- *)
 
 let set_offset_fields fields =
   let ofs = ref 0 in
@@ -473,7 +482,13 @@ let set_offset_structs = function
   | TDstruct s -> set_offset_fields s.s_fields
   | TDfunction _ -> ()
 
-(* ---------- *)
+
+
+(* ----- MAIN FUNCTION ----- *)
+
+let decl code = function
+  | TDfunction (f, e) -> code ++ function_ f e
+  | TDstruct _ -> code
 
 let file ?debug:(b=false) dl =
   debug := b;

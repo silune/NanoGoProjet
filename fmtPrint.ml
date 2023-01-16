@@ -216,6 +216,8 @@ and print_data_of = function
 
 (* ----- call function ----- *)
 
-let print_one typ =
-  require [typ];
-  call (type_to_label typ)
+let rec print_one = function
+  | Tmany [typ] -> print_one typ
+  | typ ->
+      require [typ];
+      call (type_to_label typ)
