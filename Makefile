@@ -1,7 +1,7 @@
 
 EXE=_build/default/main.exe
 
-all: $(EXE)
+all: $(EXE) rapport
 
 $(EXE): *.ml*
 	dune build @all
@@ -13,6 +13,9 @@ test: $(EXE) test.go
 	./test
 	go run test.go
 
+rapport:
+	(pdflatex rapport.tex -o rapport.pdf) > rapportLog.txt
+
 export-%:
 	cp test.go ../tests/exec/$*.go
 	go run test.go > ../tests/exec/$*.out
@@ -20,4 +23,4 @@ export-%:
 .PHONY: clean
 clean:
 	dune clean
-	rm ngoc *.dot *.png
+	rm ngoc *.dot *.png *.aux *.log *.toc *.pdf *.txt
