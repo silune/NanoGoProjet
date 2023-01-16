@@ -391,10 +391,9 @@ and expr_desc env loc = function
             (match e_expr.expr_desc with
             | TEvars (var_l, expr_l) -> List.fold_left Env.add env var_l
             | _ -> env) in
-          depth := !depth - 1;
           let b_expr, retb = expr next_env {pexpr_desc = PEblock b; pexpr_loc=loc} in
           (match b_expr.expr_desc with
-            | TEblock q -> TEblock (e_expr::q), tvoid, retb || rete
+            | TEblock q -> depth := !depth - 1; TEblock (e_expr::q), tvoid, retb || rete
             | _ -> TEblock [], tvoid, retb || rete (* impossible mais warning sinon *)))
 
   | PEincdec (e, op) ->

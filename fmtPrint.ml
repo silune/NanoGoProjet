@@ -2,6 +2,8 @@ open X86_64
 open Tast
 
 let sizeof = Typing.sizeof
+let new_skip_print_label = 
+  let r = ref 0 in fun () -> incr r; "L_SP_" ^ string_of_int !r
 
 (* ----- functions ----- *)
 
@@ -38,11 +40,17 @@ let rec print_one_safe go = function
   | Tstring ->
       call "print_string"
   | Tptr (Tstruct s) when go ->
-      movq (ind rdi) (reg rbx) ++
+      let skip_print_lab = new_skip_print_label () in
+      let end_of_skip = new_skip_print_label () in
+      movq (reg rdi) (reg rbx) ++
       testq (reg rdi) (reg rdi) ++
-      je "print_nil" ++
+      je skip_print_lab ++
       call "print_esper" ++
-      print_struct go s
+      print_struct go s ++
+      jmp end_of_skip ++
+      label skip_print_lab ++
+      call "print_nil" ++
+      label end_of_skip
   | Tptr _ ->
       call "print_pointer_hex"
   | Tstruct s ->
@@ -58,12 +66,18 @@ and print_inside go typ = match typ with
       print_struct go s ++
       popq rbx
   | Tptr (Tstruct s) when go ->
+      let skip_print_lab = new_skip_print_label () in
+      let end_of_skip = new_skip_print_label () in
       pushq (reg rbx) ++
       movq (ind rax) (reg rbx) ++
       testq (reg rbx) (reg rbx) ++
-      je "print_nil" ++
+      je skip_print_lab ++
       call "print_esper" ++
       print_struct go s ++
+      jmp end_of_skip ++
+      label skip_print_lab ++
+      call "print_nil" ++
+      label end_of_skip ++
       popq rbx
   | Tbool | Tint | Tstring | Tptr _ ->
       movq (ind rax) (reg rdi) ++

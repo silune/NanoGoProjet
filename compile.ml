@@ -45,6 +45,7 @@ let allocz n = movq (imm n) (reg rdi) ++ call "allocz"
 let set_up_div = movq (reg rdi) (reg rax) ++ cqto
 
 let sizeof = Typing.sizeof
+let eq_type = Typing.eq_type
 
 let new_label =
   let r = ref 0 in fun () -> incr r; "L_" ^ string_of_int !r
@@ -77,17 +78,32 @@ let rec is_struct = function
   | Tmany [typ] -> is_struct typ
   | _ -> false
 
-(* general case of assignation, assuming val is on the stack and direction is in rdi *)
-let rec assign_lv_general = function
+let rec is_pointer_struct = function
+  | Tptr typ -> is_struct typ
+  | Tmany [typ] -> is_pointer_struct typ
+  | _ -> false
+
+let type_of_lst = function
+  | [{ expr_desc = TEcall (f, _) }] -> f.fn_typ
+  | el -> List.map (fun ex -> ex.expr_typ) el
+
+
+(* deep_copy function, warning : %rax and %rbx are used *)
+(* source and destination are register with the address to copy in *)
+let deep_copy_fun source dest size =
+  movq (imm size) (reg rbx) ++
+  label "1" ++
+  subq (imm 8) (reg rbx) ++
+  movq (ind source ~index:rbx) (reg rax) ++
+  movq (reg rax) (ind dest ~index:rbx) ++
+  testq (reg rbx) (reg rbx) ++
+  jnz "1b"
+
+let rec assign address value = function
   | Twild -> nop
-  | Tstruct s ->
-      popq rsi ++
-      movq (imm (sizeof (Tstruct s))) (reg rbx) ++
-      call "deep_copy"
-  | Tmany [typ] -> assign_lv_general typ
-  | _ ->
-      popq rsi ++
-      movq (reg rsi) (ind rdi)
+  | Tstruct s -> deep_copy_fun value address (sizeof (Tstruct s))
+  | Tmany [typ] -> assign address value typ
+  | _ -> movq (reg value) (ind address)
 
 let rec expr env e = match e.expr_desc with
   | TEskip ->
@@ -189,45 +205,42 @@ let rec expr env e = match e.expr_desc with
 
   | TEunop (Uamp, e1) ->
     (* TODO code pour & DONE *)
-    l_val_addr env e1
+    get_addr env e1
 
   | TEunop (Ustar, e1) ->
     (* TODO code pour * DONE *)
-    l_val_addr env e ++
-    (match e.expr_typ with
-      | Tstruct _ -> nop
-      | _ -> movq (ind rdi) (reg rdi))
+    expr env e1 ++
+    (if is_struct e.expr_typ then
+      nop
+    else
+      movq (ind rdi) (reg rdi))
 
   | TEprint el ->
     (* TODO code pour Print DONE *)
     let rec run_printing = function
-      | [] ->
-          nop
-      | [typ] ->
-          popq rdi ++ FmtPrint.print_one ~go:true typ
+      | [] -> []
+      | [typ] -> [(typ, false)]
       | typ1 :: typ2 :: typ_rest ->
-          popq rdi ++ FmtPrint.print_one ~go:true typ1 ++
-          (if typ1 = Tstring || typ2 = Tstring then nop else call "print_space") ++
-          run_printing (typ2 :: typ_rest)
+          (typ1, not (eq_type typ1 Tstring || eq_type typ2 Tstring)) :: run_printing (typ2 :: typ_rest)
     in
-    let type_lst = function
-      | [{ expr_desc = TEcall (f, _) }] -> f.fn_typ
-      | el -> List.map (fun ex -> ex.expr_typ) el
+    let print_expr (typ, print_space) =
+      FmtPrint.print_one ~go:true typ ++
+      (if print_space then call "print_space" else nop)
     in
-    proper_eval_list env el ++
-    run_printing (type_lst el)
+    efficient_eval_list env el print_expr (run_printing (type_of_lst el))
 
   | TEident x ->
     (* TODO code pour x DONE *)
       movq (ind rbp ~ofs:x.v_addr) (reg rdi)
 
-  | TEassign (lvl, el) ->
+  | TEassign (lvl, el) -> 
       let assign_lv code lv =
         code ++
-        l_val_addr env lv ++
-        assign_lv_general lv.expr_typ
+        get_addr env lv ++
+        popq rsi ++
+        assign rdi rsi lv.expr_typ
       in
-      let eval_vars = proper_eval_list env el in
+      let eval_vars = put_list_on_stack env el in
       let assign_all_lv = List.fold_left assign_lv nop lvl in
       eval_vars ++ assign_all_lv
 
@@ -264,23 +277,14 @@ let rec expr env e = match e.expr_desc with
      (* TODO code pour new S DONE *)
       movq (imm (sizeof ty)) (reg rdi) ++
       call "allocz" ++
-      (match ty with
-        | Tstruct s ->
-            pushq (reg rax) ++
-            movq (imm 8) (reg rdi) ++
-            call "allocz" ++
-            popq rdi ++
-            movq (reg rdi) (ind rax) ++
-            movq (reg rax) (reg rdi)
-        | _ ->
-            movq (reg rax) (reg rdi))
+      movq (reg rax) (reg rdi)
 
   | TEcall (f, el) ->
      (* TODO code pour appel fonction *)
       let return_size = 8 * (List.length f.fn_typ) in
       let params_size = 8 * (List.length f.fn_params) in
       subq (imm return_size) (reg rsp) ++
-      proper_eval_list env el ++
+      put_list_on_stack env el ++
       call ("F_" ^ f.fn_name) ++
       (if (List.length f.fn_typ) = 1 then
         addq (imm (params_size)) (reg rsp) ++
@@ -290,7 +294,7 @@ let rec expr env e = match e.expr_desc with
   
   | TEdot (lv, f) ->
      (* TODO code pour e.f DONE *) (* simplify with ofs(%rdi) ?*)
-      l_val_addr env e ++
+      get_addr env e ++
       (if is_struct f.f_typ then
         nop
       else
@@ -298,39 +302,51 @@ let rec expr env e = match e.expr_desc with
 
   | TEvars (vl, el) ->
      (* TODO créations de variables puis assignations *)
-      let add_var code v =
-        if v.v_name = "_" then nop else (
-        env.nb_locals := !(env.nb_locals) + 1;
-        v.v_addr <- -8 * !(env.nb_locals);
-        code ++
-        (if is_struct v.v_typ then 
-            movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
-            movq (reg rax) (ind rbp ~ofs:v.v_addr)
+      let add_var v =
+        if v.v_name = "_" then
+          ()
         else
-            movq (imm 0) (ind rbp ~ofs:v.v_addr)))
+          env.nb_locals := !(env.nb_locals) + 1;
+          v.v_addr <- -8 * !(env.nb_locals);
       in
-      let assign_var code v =
-        code ++
-        l_val_addr env (mk_ident v) ++
-        assign_lv_general v.v_typ
+      let var_assign v =
+        if v.v_name = "_" then
+          nop
+        else
+          (match is_struct v.v_typ, el = [] with
+          | false, true ->
+              movq (imm 0) (ind rbp ~ofs:v.v_addr)
+          | false, false ->
+              movq (reg rdi) (ind rbp ~ofs:v.v_addr)
+          | true, true ->
+              movq (imm (sizeof v.v_typ)) (reg rdi) ++ call "allocz" ++
+              movq (reg rax) (ind rbp ~ofs:v.v_addr)
+          | true, false ->
+              let struct_size = sizeof v.v_typ in
+              pushq (reg rdi) ++
+              movq (imm struct_size) (reg rdi) ++ call "malloc" ++
+              movq (reg rax) (reg rsi) ++
+              popq rdi ++
+              deep_copy_fun rdi rsi struct_size)
       in
-      let add_all_vars = List.fold_left add_var nop vl in
-      let eval_exprs = proper_eval_list env el in
-      let assign_all_vars = if el = [] then nop else List.fold_left assign_var nop vl in
-      add_all_vars ++ eval_exprs ++ assign_all_vars
+      let complete_el =
+        if el = [] then
+          List.map (fun x -> {expr_desc = TEskip; expr_typ = Twild}) vl
+        else 
+          el
+      in
+      List.iter add_var vl;
+      efficient_eval_list env complete_el var_assign vl 
 
   | TEreturn el ->
     (* TODO code pour return *)
-    let rec eval_ret e_lst ofs_ret = match e_lst with
-      | [] ->
-          nop
-      | ex :: rest ->
-          popq rdi ++
-          movq (reg rdi) (ind rbp ~ofs:ofs_ret) ++
-          eval_ret rest (ofs_ret + 8)
+    let eval_ret =
+      let ofs_ret = ref env.ofs_this in
+      fun typ ->
+        ofs_ret := !ofs_ret + 8;
+        movq (reg rdi) (ind rbp ~ofs:(!ofs_ret - 8))
     in
-    proper_eval_list env el ++
-    eval_ret el env.ofs_this ++
+    efficient_eval_list env el eval_ret (type_of_lst el) ++
     jmp env.exit_label
 
   | TEincdec (e1, op) ->
@@ -338,12 +354,12 @@ let rec expr env e = match e.expr_desc with
     let action = match op with
       | Inc -> incq (reg r12)
       | Dec -> decq (reg r12) in
-    l_val_addr env e1 ++
+    get_addr env e1 ++
     movq (ind rdi) (reg r12) ++
     action ++
     movq (reg r12) (ind rdi)
 
-and l_val_addr env e = match e.expr_desc with
+and get_addr env e = match e.expr_desc with
   | TEident x ->
       if x.v_name = "_" then
         nop
@@ -352,21 +368,19 @@ and l_val_addr env e = match e.expr_desc with
       else
         movq (reg rbp) (reg rdi) ++
         addq (imm x.v_addr) (reg rdi)
-  | TEdot ({ expr_typ = Tptr _ } as e1, f1) ->
-      l_val_addr env e1 ++
-      movq (ind rdi) (reg rdi) ++
-      movq (ind rdi) (reg rdi) ++
-      addq (imm f1.f_ofs) (reg rdi)
   | TEdot (e1, f1) ->
-      l_val_addr env e1 ++
+      get_addr env e1 ++
+      (if (is_pointer_struct e1.expr_typ) then
+        movq (ind rdi) (reg rdi)
+      else
+        nop) ++
       addq (imm f1.f_ofs) (reg rdi)
   | TEunop (Ustar, e1) ->
-      l_val_addr env e1 ++
-      movq (ind rdi) (reg rdi)
-  | _ -> assert false (* impossible si bien typé *)
+        get_addr env e1 ++
+        movq (ind rdi) (reg rdi)
+  | _ -> assert false (*impossible si bien typé *)
 
-
-and proper_eval_list env e_lst = match e_lst with
+and put_list_on_stack env e_lst = match e_lst with
   | [] ->
       nop
   | [{expr_desc = TEcall (f, _) } as ex] ->
@@ -374,6 +388,17 @@ and proper_eval_list env e_lst = match e_lst with
       subq (imm (8 * (List.length f.fn_typ))) (reg rsp)
   | _ ->
       List.fold_left (fun code e -> expr env e ++ pushq (reg rdi) ++ code) nop e_lst
+
+and efficient_eval_list : 'a. env -> Tast.expr list -> ('a -> X86_64.text) -> 'a list -> X86_64.text =
+  fun env e_lst exec exec_arg_lst -> match e_lst with
+  | [] ->
+      nop
+  | [{ expr_desc = TEcall (f, _) } as ex] ->
+      expr env ex ++
+      subq (imm (8 * (List.length f.fn_typ))) (reg rsp) ++
+      List.fold_left (fun code arg -> code ++ popq rdi ++ exec arg) nop exec_arg_lst
+  | _ ->
+      List.fold_left2 (fun code ex arg -> code ++ expr env ex ++ exec arg) nop e_lst exec_arg_lst
 
 let set_up_params params =
   let rec aux lst i = match lst with
@@ -388,11 +413,10 @@ let rec set_up_structs params =  match params with
       let size_s = sizeof param.v_typ in
       pushq (ind rbp ~ofs:param.v_addr) ++
       movq (imm size_s) (reg rdi) ++
-      call "allocz" ++
-      popq rsi ++
+      call "malloc" ++
       movq (reg rax) (reg rdi) ++
-      movq (imm size_s) (reg rbx) ++
-      call "deep_copy" ++
+      popq rsi ++
+      deep_copy_fun rsi rdi size_s ++
       movq (reg rdi) (ind rbp ~ofs:param.v_addr)
   | _ ->
       nop
@@ -436,16 +460,6 @@ let allocz_fun =
   jnz "1b" ++
   ret
 
-(* source address in rsi, destination address in rdi, size to copy in rbx *)
-let deep_copy_fun =
-  label "deep_copy" ++
-  subq (imm 8) (reg rbx) ++
-  movq (ind rsi ~index:rbx) (reg rax) ++
-  movq (reg rax) (ind rdi ~index:rbx) ++
-  testq (reg rbx) (reg rbx) ++
-  jnz "deep_copy" ++
-  ret
-
 (* ----- offset computing ----- *)
 
 let set_offset_fields fields =
@@ -474,7 +488,6 @@ let file ?debug:(b=false) dl =
       ret ++
       funs ++
       allocz_fun ++
-      deep_copy_fun ++
       FmtPrint.print_functions;
 
    (* TODO print pour d'autres valeurs *)
