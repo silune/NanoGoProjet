@@ -273,10 +273,10 @@ let rec expr env e = match e.expr_desc with
 
   | TEassign (lvl, el) -> 
       let assign_lv code lv =
-        code ++
         get_addr env lv ++
         popq rsi ++
-        assign rdi rsi lv.expr_typ
+        assign rdi rsi lv.expr_typ ++
+        code
       in
       let eval_vars = put_list_on_stack env el in
       let assign_all_lv = List.fold_left assign_lv nop lvl in

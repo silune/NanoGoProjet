@@ -23,4 +23,5 @@ export-%:
 .PHONY: clean
 clean:
 	dune clean
-	rm ngoc *.dot *.png *.aux *.log *.toc *.pdf *.txt
+	rm ngoc *.dot *.png *.aux *.log *.toc *.pdf *.txt tst/good/*.s tst/good/*.out tst/bad_typing/*.s tst/bad_typing/*.out
+
