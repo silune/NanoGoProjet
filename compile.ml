@@ -278,7 +278,7 @@ let rec expr env e = match e.expr_desc with
         assign rdi rsi lv.expr_typ ++
         code
       in
-      let eval_vars = put_list_on_stack env el in
+      let eval_vars = put_list_on_stack env el true in
       let assign_all_lv = List.fold_left assign_lv nop lvl in
       eval_vars ++ assign_all_lv
 
@@ -321,7 +321,7 @@ let rec expr env e = match e.expr_desc with
       let return_size = 8 * (List.length f.fn_typ) in
       let params_size = 8 * (List.length f.fn_params) in
       subq (imm return_size) (reg rsp) ++
-      put_list_on_stack env el ++
+      put_list_on_stack env el false ++
       call ("F_" ^ f.fn_name) ++
       (if (List.length f.fn_typ) = 1 then
         addq (imm (params_size)) (reg rsp) ++
@@ -417,12 +417,17 @@ and get_addr env e = match e.expr_desc with
         movq (ind rdi) (reg rdi)
   | _ -> assert false (*impossible si bien typé *)
 
-and put_list_on_stack env e_lst = match e_lst with
+(* order mean :
+     | true -> first is the first pushed
+     | false -> first is the last pushed *)
+and put_list_on_stack env e_lst order = match e_lst with
   | [] ->
       nop
   | [{expr_desc = TEcall (f, _) } as ex] ->
       expr env ex ++
       subq (imm (8 * (List.length f.fn_typ))) (reg rsp)
+  | _ when order ->
+      List.fold_left (fun code e -> code ++ expr env e ++ pushq (reg rdi)) nop e_lst
   | _ ->
       List.fold_left (fun code e -> expr env e ++ pushq (reg rdi) ++ code) nop e_lst
 

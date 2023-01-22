@@ -7,6 +7,7 @@
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{amssymb}
+\usepackage{proof}
 
 \newcommand{\dd}{\text{d}•}
 
@@ -72,6 +73,27 @@ Le nom de variable \verb|"_"| est toujours considéré présent dans l'environne
 
 \subsection{Left-values}
 
-Dans l'idée de suivre le plus fidèlement possible les règles de typages, le typage des left-values est traité par une fonction auxiliaire. Cette fonction et celle qui type l'arbre syntaxique principal s'appellent mutuellement en suivant les règles de typage.
+Dans l'idée de suivre le plus fidèlement possible les règles de typages, le typage des left-values est traité par une fonction auxiliaire. Cette fonction et celle qui type l'arbre syntaxique principal s'appellent mutuellement en suivant les règles de typages.
+
+\section{Compilation}
+
+La compilation parcours l'arbre syntaxique typée et retourne un fichier \verb|.s| en \verb|x86-64|.
+
+\subsection{Expressions arithmétiques}
+
+Pour la compilation des expressions arithmétiques on compile recursivement le terme de gauche. Son retour est stocké dans le registre \verb|%rdi| qui est mis sur la pile le temps de compiler le terme de droite (cf \verb|arith-order.go| pour le test de l'ordre d'execution). Finalement on dépile le premier résultat dans \verb|%rsi| et le résultat de l'opération adéquate est mis dans \verb|%rdi|.
+Note spéciale pour la fonction \verb|idivq|, il est nécéssaire d'appeler \verb|cqto| pour effectuer la bonne division.
+
+\subsection{Booléen}
+
+Pour les expressions bouléennes on peut proposer une sémantique simple, semblable à celle de C :\\
+
+
+$$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow (n_1 \; op \; n_2) , \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' \; \; \rho, \mu ' \vdash e_2 \Rightarrow n_2 \; \; op \in \{ \text{\texttt{||}}, \text{\texttt{\&\&}} \}}$$
+
+$$\infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow \text{\texttt{!}} n_1 , \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu '}$$
+
+
+Les comparaisons d'entier sont compilées à la manière des expressions arithmétiques, on appel la fonction \verb|cmpq|.
 
 \end{document}
