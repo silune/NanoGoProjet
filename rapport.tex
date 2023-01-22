@@ -59,7 +59,7 @@ Les types \verb|Tmany [ ... ]| permettent de désigner le type d'un appel de fon
 
 Le type \verb|Twild| permet de désigner un type abstrait quelconque (par exemple les expressions \verb|nil| ou \verb|"_"|)
 
-Les égalitées de types sont de également gérée récursivement. Un cas spécial est réservé aux types de la forme \verb|Tmany[typ]| qui sont, dans l'ensemble de mon projet, assimilées au type \verb|typ| simple. Ceci nécéssite de gérer les cas particulier régulièrement mais simplifie le typage des fonctions.
+Les égalitées de types sont de également gérée récursivement. Un cas spécial est réservé aux types de la forme \verb|Tmany[typ]| qui sont, dans l'ensemble de mon projet, assimilées au type \verb|typ| simple. Ceci nécéssite de gérer ces cas particulier régulièrement mais simplifie le typage des fonctions.
 
 \subsection{Environnements et variables}
 
@@ -86,14 +86,38 @@ Note spéciale pour la fonction \verb|idivq|, il est nécéssaire d'appeler \ver
 
 \subsection{Booléen}
 
-Pour les expressions bouléennes on peut proposer une sémantique simple, semblable à celle de C :\\
+Pour les expressions bouléennes on peut proposer une sémantique simple, semblable à celle de C.
+\subsubsection{Operation}
+\vspace{-2em}
 
+$$\infer{\rho, \mu \vdash e_1 \; \text{\texttt{\&\&}} \; e_2 \Rightarrow 0, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 = 0}
+\; \text{\; \; \;} \;
+\infer{\rho, \mu \vdash e_1 \; \text{\texttt{\&\&}} \; e_2 \Rightarrow n_2, \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & \rho, \mu ' \vdash e_2 \Rightarrow n_2, \mu '' & n_1 \neq 0}$$
+$$\infer{\rho, \mu \vdash e_1 \; \text{\texttt{||}} \; e_2 \Rightarrow 1, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 \neq 0}
+\; \text{\; \; \;} \;
+\infer{\rho, \mu \vdash e_1 \; \text{\texttt{||}} \; e_2 \Rightarrow n_2, \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & \rho, \mu ' \vdash e_2 \Rightarrow n_2, \mu '' & n_1 = 0}$$
+$$\infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow 0, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 \neq 0}
+\; \text{\; \; \;} \;
+\infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow 1, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 = 0}$$
 
-$$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow (n_1 \; op \; n_2) , \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' \; \; \rho, \mu ' \vdash e_2 \Rightarrow n_2 \; \; op \in \{ \text{\texttt{||}}, \text{\texttt{\&\&}} \}}$$
+Les règles pour \verb-&&- et \verb-&&- sont dites "lazy" : l'expression de droite n'est pas évaluée si le résultat de l'expression de gauche suffit, sinon c'est le résultat de droite qui est renvoyé.
+En pratique les valeurs booléennes évaluées à \verb|true| sont toujours représentées par un \verb|1| mais on ne vérifie que si la representation est différente de \verb|0|.
 
-$$\infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow \text{\texttt{!}} n_1 , \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu '}$$
+\subsubsection{Comparaison}
+\vspace{-1em}
 
+$$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow 0, \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & \rho, \mu ' \vdash e_2 \Rightarrow n_2, \mu '' & op \in \{\text{\texttt{<}}, \text{\texttt{<=}}, \text{\texttt{>}}, \text{\texttt{>=}}\} & \lnot (n_1 \; op \; n_2)}$$
+$$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow 1, \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & \rho, \mu ' \vdash e_2 \Rightarrow n_2, \mu '' & op \in \{\text{\texttt{<}}, \text{\texttt{<=}}, \text{\texttt{>}}, \text{\texttt{>=}}\} & n_1 \; op \; n_2}$$
 
-Les comparaisons d'entier sont compilées à la manière des expressions arithmétiques, on appel la fonction \verb|cmpq|.
+Les comparaisons d'entier sont compilées à la manière des expressions arithmétiques, on appel la fonction \verb|cmpq| et on jump, en utilisant le bon flag, vers un label qui met soit \verb|0| soit \verb|1| dans \verb|%rdi|.
+
+\subsubsection{Egalité}
+
+Le cas des opérateurs \verb|==| et \verb|!=| est moins évident puisque il dépend du type des expressions :\\
+ - les types entiers, pointeurs et booléens sont testés comme des entiers avec la fonction \verb|cmpq|\\
+ - le type string est testé avec la fonction \verb|strcmp@PLT| comme en C, elle renvoie \verb|0| si et seulement si les deux chaines de caractères sont les mêmes, il suffit donc de faire un test à \verb|0| avec le résultat\\
+ - les types structures sont testés avec un test "lazy" bit à bit sur l'ensemble des espaces alloués aux deux structures (c.f. implémentation des structures)\\
+
+Une fois ces comparaisons effectuées, il suffit de jump, en utilisant le bon flag, vers un label qui met soit \verb|0| soit \verb|1| dans \verb|%rdi|.
 
 \end{document}
