@@ -86,13 +86,15 @@ let compile_bool f =
 (* deep_copy function, warning : %rax and %rbx are used *)
 (* source and destination are register with the address to copy in *)
 let deep_copy_fun source dest size =
+  comment "deepy_copy" ++ 
   movq (imm size) (reg rbx) ++
   label "1" ++
   subq (imm 8) (reg rbx) ++
   movq (ind source ~index:rbx) (reg rax) ++
   movq (reg rax) (ind dest ~index:rbx) ++
   testq (reg rbx) (reg rbx) ++
-  jnz "1b"
+  jnz "1b" ++
+  comment "end_of_deep_copy"
 
 let rec assign address value = function
   | Twild -> nop
@@ -362,6 +364,7 @@ let rec expr env e = match e.expr_desc with
               let struct_size = sizeof v.v_typ in
               pushq (reg rdi) ++
               malloc struct_size ++
+              movq (reg rax) (ind rbp ~ofs:v.v_addr) ++
               movq (reg rax) (reg rsi) ++
               popq rdi ++
               deep_copy_fun rdi rsi struct_size)

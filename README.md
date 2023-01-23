@@ -10,8 +10,8 @@ How to use it:
 ## Remarks about the test
 
 There is some scripts to test the `.go` files in `tst` :
- - all_test.sh executes all test and waits for a button to be pressed between every test
- - one_test.sh executes only one test and takes the name of the file without `.go`
- - with_go_test.sh executes only one test but also execute the code with `go run` (also takes the name without `.go`)
+ - `all_test.sh` executes all test and waits for a button to be pressed between every test
+ - `one_test.sh` executes only one test and takes the name of the file without `.go`
+ - `with_go_test.sh` executes only one test but also execute the code with `go run` (also takes the name without `.go`)
 
 Thooses script remove the auxilary files generated.
