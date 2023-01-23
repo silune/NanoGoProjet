@@ -149,6 +149,12 @@ let rec is_well_formed = function
   | Tptr ty | Tmany [ty] -> is_well_formed ty
   | _ -> false
 
+(* Verifie si un type est de type pointer et renvoie le type vers lequel il pointe *)
+let rec pointer_type loc = function
+  | Tptr typ -> typ
+  | Tmany [typ] -> pointer_type loc typ
+  | _ -> error loc "should be a pointer type"
+
 (* Test si une expression est de type bien formé, renvoie une erreur si n'est pas le cas *)
 let check_well_formed id loc expr_elt =
   if not (is_well_formed expr_elt.expr_typ) then
@@ -289,8 +295,8 @@ and expr_desc env loc = function
      let expr_e1, rt_e1 = l_val env e1 in
         TEunop (Uamp, expr_e1), Tptr expr_e1.expr_typ, rt_e1
 
-  | PEunop (Ustar, e1) ->
-     l_val_desc env loc (PEunop (Ustar, e1))
+  | PEunop (Ustar, e1) as ex ->
+     l_val_desc env loc ex
 
   | PEunop (Uneg | Unot as op, e1) ->
      let expr1, rt1 = expr env e1 in
@@ -436,9 +442,9 @@ and l_val_desc env loc = function
      let exprE, rtE = expr env pexpr in
      if exprE.expr_desc = TEnil then
        error loc "*nil is not defined"
-     else (match exprE.expr_typ with
-            | Tptr typ -> TEunop (Ustar, exprE), typ, rtE
-            | typ -> error loc "should be a pointer type")
+     else
+       let typ = pointer_type loc exprE.expr_typ in
+       TEunop (Ustar, exprE), typ, rtE
   | _ -> error loc "lvalue required here"
 
 (* Renvoie une liste d'expression et une liste de types à partir d'une liste de pexpressions *)
