@@ -1,9 +1,11 @@
-\documentclass[11pt,a4paper]{article}
+\documentclass[9pt,a4paper]{article}
 \usepackage[french]{babel}
 \usepackage{listings}
 \usepackage[T1]{fontenc}
 \usepackage{verbatim}
-\usepackage[margin=1.2in]{geometry}
+
+\usepackage[a4paper]{geometry}
+\geometry{hscale=0.86,vscale=0.87,centering}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{amssymb}
@@ -87,8 +89,9 @@ Note spéciale pour la fonction \verb|idivq|, il est nécéssaire d'appeler \ver
 \subsection{Booléen}
 
 Pour les expressions bouléennes on peut proposer une sémantique simple, semblable à celle de C.
-\subsubsection{Operation}
-\vspace{-2em}
+
+\subsubsection*{Operation}
+\vspace{-1em}
 
 $$\infer{\rho, \mu \vdash e_1 \; \text{\texttt{\&\&}} \; e_2 \Rightarrow 0, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 = 0}
 \; \text{\; \; \;} \;
@@ -101,9 +104,9 @@ $$\infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow 0, \mu '}{\rho, \mu 
 \infer{\rho, \mu \vdash \text{\texttt{!}} e_1 \Rightarrow 1, \mu '}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & n_1 = 0}$$
 
 Les règles pour \verb-&&- et \verb-&&- sont dites "lazy" : l'expression de droite n'est pas évaluée si le résultat de l'expression de gauche suffit, sinon c'est le résultat de droite qui est renvoyé.
-En pratique les valeurs booléennes évaluées à \verb|true| sont toujours représentées par un \verb|1| mais on ne vérifie que si la representation est différente de \verb|0|.
+En pratique les valeurs booléennes évaluées à \verb|true| sont toujours représentées par un \verb|1| mais on se contente de vérifier si la representation est différente de \verb|0|.
 
-\subsubsection{Comparaison}
+\subsubsection*{Comparaison}
 \vspace{-1em}
 
 $$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow 0, \mu ''}{\rho, \mu \vdash e_1 \Rightarrow n_1, \mu ' & \rho, \mu ' \vdash e_2 \Rightarrow n_2, \mu '' & op \in \{\text{\texttt{<}}, \text{\texttt{<=}}, \text{\texttt{>}}, \text{\texttt{>=}}\} & \lnot (n_1 \; op \; n_2)}$$
@@ -111,13 +114,73 @@ $$\infer{\rho, \mu \vdash e_1 \; op \; e_2 \Rightarrow 1, \mu ''}{\rho, \mu \vda
 
 Les comparaisons d'entier sont compilées à la manière des expressions arithmétiques, on appel la fonction \verb|cmpq| et on jump, en utilisant le bon flag, vers un label qui met soit \verb|0| soit \verb|1| dans \verb|%rdi|.
 
-\subsubsection{Egalité}
+\subsubsection*{Egalité}
 
 Le cas des opérateurs \verb|==| et \verb|!=| est moins évident puisque il dépend du type des expressions :\\
  - les types entiers, pointeurs et booléens sont testés comme des entiers avec la fonction \verb|cmpq|\\
  - le type string est testé avec la fonction \verb|strcmp@PLT| comme en C, elle renvoie \verb|0| si et seulement si les deux chaines de caractères sont les mêmes, il suffit donc de faire un test à \verb|0| avec le résultat\\
- - les types structures sont testés avec un test "lazy" bit à bit sur l'ensemble des espaces alloués aux deux structures (c.f. implémentation des structures)\\
+ - les types structures sont testés avec un test "lazy" bit à bit sur l'ensemble des espaces alloués aux deux structures (c.f. implémentation des structures)
 
 Une fois ces comparaisons effectuées, il suffit de jump, en utilisant le bon flag, vers un label qui met soit \verb|0| soit \verb|1| dans \verb|%rdi|.
+
+\subsection{Variables}
+
+Contrairement à la partie de typage, les environnements ne sont plus locaux et servent seulement à se souvenir du nombre de variables différentes rencontrées lors du parcours, c'est le typage qui s'occupe de toutes les différenciées. Ainsi lors du parcours on associe à chaque variable une addresse qui n'est en fait qu'un décalage \verb|offset| par rapport à la base de la pile \verb|%rbp|. Pour obtenir l'addresse de son contenu il suffit alors de faire \verb|movq %rbp, %rdi| puis \verb|subq offset %rdi| et \verb|movq (%rdi), %rdi| pour lire la valeur.
+
+Une fois le corps d'une fonction parcouru, il faut allouer l'espace pour ces variables, on fait donc \verb|subq allocSize %rsp| afin de ne pas intèrferer l'espace reservé aux variables lors des mainpulations avec la pile (avec \verb|allocSize| : 8 $\times$ (nombre de variables)). 
+
+En pratique, pour l'assignation de variable on commence par évaluer toutes les expressions à assigner (de gauche à droite) que l'on met sur la pile pour prévenir les effets de bords (par exemple on ne veut pas que \verb|a, b = b, a| mettent \verb|b| dans \verb|a| PUIS \verb|a| qui est \verb|b| dans \verb|b|). Ensuite on évalue les addresses des variables (de droite à gauche) et on dépile les résultats des expressions pour les assignées. Une création de variable n'est rien de plus qu'une assignation de variable qui met chaques bits de la variable à \verb|0| lorsque aucune expression n'est indiqué.
+Lors de cette étape les \verb|_| sont ignorés et on se contente de dépiler.
+
+\subsection{Pointeurs}
+
+Comme pour le typage des left-values, ici une fonction est chargée d'obtenir l'addresse d'une left-value. Ainsi pour évaluer l'expression \verb|&x| il suffit de chercher l'addresse de \verb|x|. Pour évaluer l'expression \verb|*p| il suffit d'évaluer \verb|p| puis de regarder la valeur qui se trouve à cette addresse : \verb|movq (%rdi) %rdi|.
+
+\subsection{Fonctions}
+
+La gestion des appels de fonctions est plus complexes et on rencontre trois problèmes majeurs.
+
+\subsubsection*{Les valeurs de retour}
+
+On veut pouvoir utiliser les valeurs de retour d'un appel de fonction. Pour cela on alloue un espace spécial reservé à ces valeurs en déplacant la pile avec \verb|subq 8*nbRetour, %rsp|. Dans une fonction, lors d'un \verb|return| l'ensemble des expressions sont évaluées (de gauche à droite) et placées dans cette espace. Au retour de la fonction, les résultats sont sur le sommet de la pile, on dépile dans \verb|%rdi| s'il n'y a qu'une valeur de retour, si on ne se sert pas des valeurs on libère l'espace en déplacant \verb|%rsp|.
+
+\subsubsection*{Les arguments}
+
+On doit évaluer les arguments d'une fonction avant de rentrer dans son corps mais on doit toujours pouvoir utiliser ces résultats dans son corps. Pour cela un espace est spécial est réservé pour ces variables, elles seront au dessus de la base de la pile lors de l'évaluation de la fonction. Il suffit donc d'évaluer les arguments (de droite à gauche) et de les mettres sur la pile avant d'appeller la fonction.
+
+Attention pour le calcul de ces \verb|offset| il faut compter la taille de \verb|%rbp| et de l'addresse de retour. Il faut prendre cela en compte pour le calcul des \verb|offset| des valeurs de retour.
+
+\subsubsection*{Les retours}
+
+Pour gérer la pile au sein du corps d'une fonction on réalise une translation de \verb|%rbp| en se souvenant de son ancienne valeur sur la pile avec : \verb|pushq %rbp| puis \verb|movq %rsp, %rbp|. Il faut prendre ces décalages de la pile dans le calculs des \verb|offset|.Pour retourner il suffit donc de replacer la pile : \verb|movq %rbp, %rsp| puis \verb|popq %rbp| et finalement \verb|ret|. Comme on souhaite pouvoir retourner à n'importe quel moment mais aussi lorsqu'on atteint la fin du corps de la fonction, ces trois instructions sont précédées d'un label de la forme \verb|E_functionName| et placées à la fin du corps.
+
+Les variables locales étant stockées dans la pile locale (c.f. gestions des variables) mais elles sont donc oubliées après le retour. Si la fonction renvoie un pointeur vers une variable locale, il y a de fortes chances que l'accès à cette mémoire produise des erreurs et je n'ai pas pris le temps de résoudre ce problème.
+
+\subsection{Structure}
+
+Les structures posent un problème de gestion de la pile. Lorsqu'une variable est de type structure il faut pouvoir \verb|push| plus d'un octet et cela complique toutes les autres fonctionnalitées (assignation, appel de fonction, retour de fonction, print, etc...). Comme solution à cela j'ai représenté mes structures dans ma pile par des pointeurs vers un bloc mémoire dans le tas. Cela simplifie la chose, lorsqu'on évalue une expression, si elle est de type structure on se contente d'obtenir l'addresse du bloc. Les structures au sein de structures sont toujours représentées par un bloc interne et pas par un pointeur vers un autre bloc. Cette méthode était plus pratique et plus fiable pour moi mais elle reste moins performantes et robuste.
+
+Ce choix implique une conséquence spéciale : lors d'un appel de fonction, pour préservé les effets de bords si une structure est passée en argument, il est nécéssaire d'allouer un nouveau bloc et de copier son contenu (cependant pour le retour il suffit de retourner l'addresse de ce nouveau bloc). De même lors d'une assignation. Ce type de parcours (comme pour le test d'égalité) ce fait à l'aide d'un registre \verb|%rbx| initialisé avec la taille de la structure et décrémenté d'un octet jusqu'à être nul. Un accès à chaque octet est réalisé avec \verb|(%rdi, %rbx)|.
+
+\subsubsection*{Champs de structure}
+
+Les champs d'une structure ne sont en réalité que des \verb|offsets| de l'addresse de la structure. Ces \verb|offsets| sont calculés en prenant en compte la "vraie" taille des structure (pas un seul octet pour chaque champs, contrairements aux variables dans la pile). Ainsi pour évalué l'expression \verb|s.f| on évalue l'expression \verb|s| qui met donc l'addresse vers le bloc mémoir de \verb|s| dans \verb|%rdi| puis déplace notre pointeur \verb|addq f.f_offset %rdi| pour obtenir l'addresse de \verb|s.f|. Si \verb|s.f| est de type structure on s'arrête ici, sinon on lit la valeur : \verb|movq (%rdi) %rdi|.
+\\
+
+Pour pouvoir print les champs d'une structure dans l'ordre j'ai ajouté un champ \verb|f_order| au type \verb|field| qui traduit l'ordre dans lequel les variables sont déclarées.
+
+\subsection{Print}
+
+Pour print les expressions j'ai implémenté une fonction assembleur par type (y compris pour chaque structure) qui se charge de l'afficher suivant le format récursif (avec la fonction \verb|printf| pour les entiers, les strings et les pointeurs): \\
+ - type entier : \verb|%ld| \\
+ - type string : \verb|%s| \\
+ - type bool : \verb|true| ou \verb|false| \\
+ - type pointeur : \verb|0x%x| (en hexa) \\
+ - type structure : \verb|{ liste des champs, avec espace }| \\
+ - type pointeur de structure : \verb|&{ liste des champs, avec espace }| \\
+
+Si on s'en tient strictement à ce format il existe des structures qui peuvent générer des affichage infini, dans ce cas je le detecte et change les pointeurs de structures en pointeurs normaux (et le signal avec un Warning).
+
+La fonction \verb|fmt.Print| évalue la liste d'expression de gauche à droite et fait appel aux fonctions pour print chaques types un par un, elle met un espace entre deux expressions uniquement si aucune des deux n'est de type string (comme le spécifie la documentation de go).
 
 \end{document}
