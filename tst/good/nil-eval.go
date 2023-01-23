@@ -4,5 +4,5 @@ import "fmt"
 func main() {
 	var p *int 
 	p = nil
-  fmt.Print(p)
+  fmt.Print(p, "\n")
 }
